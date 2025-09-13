@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 import os
 
 from .database import connect_db, close_db, SURREAL_URL, SURREAL_NAMESPACE, SURREAL_DATABASE
-from .routers import notebooks, notes, sources, podcasts, search, models, transformations, chat
+from .routers import notebooks, notes, sources, podcasts, search, models, transformations, chat, serper
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -58,6 +58,8 @@ app.include_router(search.router)
 app.include_router(models.router)
 app.include_router(transformations.router)
 app.include_router(chat.router)
+app.include_router(serper.router)
+
 
 # Simple root endpoint for health check / info
 @app.get("/")

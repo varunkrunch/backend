@@ -22,7 +22,7 @@ from ..database import get_db_connection
 from ..models import StatusResponse
 from open_notebook.domain.models import Model
 from open_notebook.plugins.podcasts import PodcastEpisode, PodcastConfig
-from .models import PodcastTemplateResponse, conversation_styles, dialogue_structures, engagement_techniques, participant_roles
+from .models import conversation_styles, dialogue_structures, engagement_techniques, participant_roles
 from open_notebook.domain.notebook import Note, Source
 
 # Constants
@@ -100,7 +100,7 @@ def convert_record_id_to_string(data: Any) -> Any:
 class PodcastTemplateResponse(PodcastConfig):
     model_config = ConfigDict(from_attributes=True)
     
-    @field_validator("person1_role", "person2_role", "conversation_style", "engagement_technique", "dialogue_structure", mode="after")
+    @field_validator("person1_role", "person2_role", "conversation_style", "engagement_technique", "dialogue_structure", mode="before")
     @classmethod
     def ensure_list(cls, v: Any) -> List[str]:
         if v is None:
@@ -130,6 +130,9 @@ class PodcastEpisodeSummary(BaseModel):
     status: str = "pending"
     instructions: Optional[str] = None
     text: Optional[str] = None
+    audio_url: Optional[str] = None
+    audio_file: Optional[str] = None
+    duration: Optional[float] = None
 
 class PodcastGenerateRequest(BaseModel):
     template_name: str
@@ -155,6 +158,192 @@ class StatusResponse(BaseModel):
 router = APIRouter(prefix="/api/v1/podcasts", tags=["Podcasts"])
 
 # Essential endpoints only
+@router.get("/episodes/by-notebook/{notebook_name}", response_model=List[PodcastEpisodeSummary])
+async def list_podcast_episodes_by_notebook(
+    notebook_name: str,
+    db: AsyncSurreal = Depends(get_db_connection)
+) -> List[PodcastEpisodeSummary]:
+    """List podcast episodes for a specific notebook by name."""
+    try:
+        logger.info(f"Fetching podcast episodes for notebook: {notebook_name}")
+        
+        # First, find the notebook by name
+        notebook_query = "SELECT id FROM notebook WHERE name = $name"
+        notebook_result = await db.query(notebook_query, {"name": notebook_name})
+        
+        if not notebook_result or len(notebook_result) == 0:
+            logger.warning(f"Notebook '{notebook_name}' not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Notebook '{notebook_name}' not found"
+            )
+        
+        notebook_data = notebook_result[0]
+        if isinstance(notebook_data, list) and len(notebook_data) > 0:
+            notebook_data = notebook_data[0]
+        
+        notebook_id = notebook_data.get('id')
+        if not notebook_id:
+            logger.error(f"No ID found for notebook '{notebook_name}'")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"No ID found for notebook '{notebook_name}'"
+            )
+        
+        logger.info(f"Found notebook ID: {notebook_id}")
+        
+        # First, let's debug by checking what episodes exist and their structure
+        logger.info(f"Debugging: Looking for episodes with notebook_id: {notebook_id}")
+        
+        # Try multiple query approaches to find episodes
+        queries_to_try = [
+            # Query 1: Direct content_source.id match (most likely to work)
+            (f"SELECT * FROM {PODCAST_EPISODE_TABLE} WHERE content_source.id = $notebook_id", 
+             {"notebook_id": notebook_id}, "content_source.id match"),
+            
+            # Query 2: Check if content_source is an object with id field
+            (f"SELECT * FROM {PODCAST_EPISODE_TABLE} WHERE content_source->id = $notebook_id", 
+             {"notebook_id": notebook_id}, "content_source->id match"),
+            
+            # Query 3: Check if content_source is just the ID string
+            (f"SELECT * FROM {PODCAST_EPISODE_TABLE} WHERE content_source = $notebook_id", 
+             {"notebook_id": notebook_id}, "content_source direct match"),
+            
+            # Query 4: Get all episodes to see their structure
+            (f"SELECT * FROM {PODCAST_EPISODE_TABLE}", 
+             {}, "all episodes for debugging")
+        ]
+        
+        episodes_result = None
+        used_query = None
+        
+        for query, params, description in queries_to_try:
+            try:
+                logger.info(f"Trying query: {description}")
+                logger.info(f"Query: {query}")
+                logger.info(f"Params: {params}")
+                
+                result = await db.query(query, params)
+                logger.info(f"Query result: {result}")
+                
+                if result and len(result) > 0:
+                    episodes_result = result
+                    used_query = description
+                    logger.info(f"Found episodes using: {description}")
+                    break
+                    
+            except Exception as e:
+                logger.warning(f"Query failed ({description}): {e}")
+                continue
+        
+        if not episodes_result:
+            logger.warning("No episodes found with any query approach")
+            return []
+        
+        if not episodes_result:
+            logger.info(f"No episodes found for notebook '{notebook_name}'")
+            return []
+        
+        # Debug: Log the structure of found episodes
+        logger.info(f"Found {len(episodes_result)} episode records using query: {used_query}")
+        for i, ep in enumerate(episodes_result):
+            logger.info(f"Episode {i}: {ep} (type: {type(ep)})")
+        
+        episodes = []
+        for ep in episodes_result:
+            if isinstance(ep, list) and len(ep) > 0:
+                ep = ep[0]
+            
+            ep_dict = ep.model_dump() if hasattr(ep, 'model_dump') else dict(ep)
+            
+            # Debug: Log the content_source structure
+            content_source = ep_dict.get('content_source', {})
+            logger.info(f"Episode content_source: {content_source} (type: {type(content_source)})")
+            
+            # Check if this episode belongs to our notebook
+            episode_notebook_id = None
+            if isinstance(content_source, dict):
+                episode_notebook_id = content_source.get('id')
+            elif isinstance(content_source, str):
+                episode_notebook_id = content_source
+            
+            logger.info(f"Episode notebook ID: {episode_notebook_id}, Looking for: {notebook_id}")
+            
+            # Only include episodes that match our notebook
+            if str(episode_notebook_id) != str(notebook_id):
+                logger.info(f"Skipping episode - notebook ID mismatch")
+                continue
+            
+            # Convert IDs to strings
+            if hasattr(ep_dict.get('id', None), 'table_name') and hasattr(ep_dict.get('id', None), 'id'):
+                ep_dict['id'] = f"{ep_dict['id'].table_name}:{ep_dict['id'].id}"
+            elif ep_dict.get('id', None) is not None:
+                ep_dict['id'] = str(ep_dict['id'])
+            
+            if hasattr(ep_dict.get('template', None), 'table_name') and hasattr(ep_dict.get('template', None), 'id'):
+                ep_dict['template'] = f"{ep_dict['template'].table_name}:{ep_dict['template'].id}"
+            elif ep_dict.get('template', None) is not None:
+                ep_dict['template'] = str(ep_dict['template'])
+            else:
+                ep_dict['template'] = ""
+            
+            # Get template name
+            template_id = ep_dict.get('template')
+            if template_id:
+                if hasattr(template_id, 'table_name') and hasattr(template_id, 'id'):
+                    template_id = f"{template_id.table_name}:{template_id.id}"
+                
+                template_query = f"SELECT name FROM {PODCAST_CONFIG_TABLE} WHERE id = $id"
+                template_result = await db.query(template_query, {"id": template_id})
+                if template_result and len(template_result) > 0 and len(template_result[0]) > 0:
+                    ep_dict['template_name'] = template_result[0].get('name')
+            
+            # Set notebook name
+            ep_dict['notebook_name'] = notebook_name
+            
+            # Ensure all required fields exist
+            if 'created' not in ep_dict or not ep_dict['created']:
+                ep_dict['created'] = datetime.now()
+            
+            # Add default values for optional fields if missing
+            if 'name' not in ep_dict:
+                ep_dict['name'] = None
+            if 'template_name' not in ep_dict:
+                ep_dict['template_name'] = None
+            if 'status' not in ep_dict:
+                ep_dict['status'] = "pending"
+            if 'instructions' not in ep_dict:
+                ep_dict['instructions'] = None
+            if 'text' not in ep_dict:
+                ep_dict['text'] = None
+            if 'audio_url' not in ep_dict:
+                ep_dict['audio_url'] = None
+            if 'audio_file' not in ep_dict:
+                ep_dict['audio_file'] = None
+            if 'duration' not in ep_dict:
+                ep_dict['duration'] = None
+            
+            # Create a valid PodcastEpisodeSummary object
+            try:
+                episode_summary = PodcastEpisodeSummary(**ep_dict)
+                episodes.append(episode_summary.model_dump())
+            except Exception as e:
+                logger.error(f"Error creating episode summary: {e}")
+                logger.error(f"Episode data: {ep_dict}")
+                continue
+        
+        logger.info(f"Found {len(episodes)} episodes for notebook '{notebook_name}'")
+        return episodes
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing podcast episodes for notebook '{notebook_name}': {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error listing podcast episodes for notebook '{notebook_name}': {str(e)}"
+        )
+
 @router.get("/episodes", response_model=List[PodcastEpisodeSummary])
 async def list_podcast_episodes(
     db: AsyncSurreal = Depends(get_db_connection),
@@ -223,7 +412,15 @@ async def list_podcast_episodes(
                 ep_dict['instructions'] = None
             if 'text' not in ep_dict:
                 ep_dict['text'] = None
-                
+            # Ensure audio_url and audio_file are always present
+            if 'audio_url' not in ep_dict:
+                ep_dict['audio_url'] = None
+            if 'audio_file' not in ep_dict:
+                ep_dict['audio_file'] = None
+            # Ensure duration is always present
+            if 'duration' not in ep_dict:
+                ep_dict['duration'] = None
+            
             # Create a valid PodcastEpisodeSummary object to ensure all fields are present
             try:
                 episode_summary = PodcastEpisodeSummary(**ep_dict)
@@ -359,6 +556,8 @@ async def delete_podcast_episode(
         logger.error(f"Unexpected error in delete_podcast_episode: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
+
+
 @router.get("/episodes/{episode_identifier}/audio")
 async def get_episode_audio(
     episode_identifier: str,
@@ -447,7 +646,10 @@ async def get_episode_audio(
             media_type="audio/mpeg",
             headers={
                 'Content-Disposition': f'inline; filename="{os.path.basename(file_path)}"',
-                'Content-Length': str(file_size)
+                'Content-Length': str(file_size),
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET',
+                'Access-Control-Allow-Headers': '*'
             }
         )
         
@@ -507,8 +709,13 @@ async def get_template_by_id_or_name(template_identifier: str, db: AsyncSurreal)
                     if t_name == template_identifier.lower():
                         logger.debug(f"Found matching template by name: {t_dict}")
                         # Ensure ID is properly formatted
-                        if 'id' in t_dict and hasattr(t_dict['id'], 'id'):
-                            t_dict['id'] = str(t_dict['id'].id)
+                        if 'id' in t_dict:
+                            if hasattr(t_dict['id'], 'id'):
+                                t_dict['id'] = str(t_dict['id'].id)
+                            elif hasattr(t_dict['id'], 'table_name'):
+                                t_dict['id'] = f"{t_dict['id'].table_name}:{t_dict['id'].id}"
+                            else:
+                                t_dict['id'] = str(t_dict['id'])
                         return t_dict
                 except Exception as e:
                     logger.warning(f"Error processing template: {e}")
@@ -540,8 +747,13 @@ async def get_template_by_id_or_name(template_identifier: str, db: AsyncSurreal)
                     template = dict(result[0][0])
                     logger.debug(f"Found template using {query_type}: {template}")
                     # Ensure ID is properly formatted
-                    if 'id' in template and hasattr(template['id'], 'id'):
-                        template['id'] = str(template['id'].id)
+                    if 'id' in template:
+                        if hasattr(template['id'], 'id'):
+                            template['id'] = str(template['id'].id)
+                        elif hasattr(template['id'], 'table_name'):
+                            template['id'] = f"{template['id'].table_name}:{template['id'].id}"
+                        else:
+                            template['id'] = str(template['id'])
                     return template
                     
             except Exception as query_error:
@@ -813,21 +1025,30 @@ async def update_podcast_template(
             raise HTTPException(status_code=422, detail=str(ve))
         
         # Update the template in the database
-        query = f"UPDATE {PODCAST_CONFIG_TABLE} SET $set WHERE id = $id RETURN AFTER"
-        result = await db.query(
-            query,
-            {
-                "id": existing_template['id'],
-                "set": validated.model_dump(exclude_unset=True)
-            }
-        )
+        # Ensure the ID is in the correct format for the UPDATE query
+        template_id = existing_template['id']
+        if hasattr(template_id, 'table_name') and hasattr(template_id, 'record_id'):
+            # It's a RecordID object
+            template_id = f"{template_id.table_name}:{template_id.record_id}"
+        elif ':' not in template_id:
+            template_id = f"{PODCAST_CONFIG_TABLE}:{template_id}"
         
-        if not result or not result[0] or not result[0][0]:
+        # Use merge operation instead of UPDATE for better SurrealDB compatibility
+        update_data = validated.model_dump(exclude_unset=True)
+        # Remove id from update data to avoid conflicts
+        if 'id' in update_data:
+            del update_data['id']
+        
+        # Use merge to update the record
+        result = await db.merge(template_id, update_data)
+        
+        if not result:
             raise HTTPException(status_code=404, detail="Failed to update template")
         
-        # Get the updated template
-        updated_template = dict(result[0][0])
-        updated_template['id'] = str(updated_template['id'])
+        # Get the updated template - merge returns the updated record directly
+        updated_template = dict(result)
+        if 'id' in updated_template:
+            updated_template['id'] = str(updated_template['id'])
         
         return StatusResponse(
             status="success",
@@ -1140,6 +1361,30 @@ async def generate_podcast_episode(
                 min_chunk_size=min_chunk_size
             )
             
+            # Update the episode with notebook reference if we have a notebook
+            if request.notebook_name and notebook_data:
+                # Find the episode we just created and update it with notebook reference
+                episode_query = f"SELECT * FROM {PODCAST_EPISODE_TABLE} WHERE name = $name ORDER BY created DESC LIMIT 1"
+                episode_result = await db.query(episode_query, {"name": episode_name})
+                
+                if episode_result and len(episode_result) > 0:
+                    episode_data = episode_result[0]
+                    if isinstance(episode_data, list) and len(episode_data) > 0:
+                        episode_data = episode_data[0]
+                    
+                    episode_id = episode_data.get('id')
+                    if episode_id:
+                        # Update the episode with content_source information
+                        content_source = {
+                            "type": "notebook",
+                            "id": notebook_data.get("id"),
+                            "name": request.notebook_name
+                        }
+                        
+                        update_query = f"UPDATE {episode_id} SET content_source = $content_source"
+                        await db.query(update_query, {"content_source": content_source})
+                        logger.info(f"Updated episode {episode_id} with notebook reference: {request.notebook_name}")
+            
             # No need to update the episode with audio_url as it's now handled in the generate_episode method
             
         except Exception as e:
@@ -1219,6 +1464,248 @@ async def get_suggestions() -> Dict[str, List[str]]:
         "engagement_techniques": engagement_techniques,
         "participant_roles": participant_roles
     }
+
+@router.post("/reassign-episodes", response_model=StatusResponse)
+async def reassign_episodes_by_content(
+    db: AsyncSurreal = Depends(get_db_connection),
+    debug: bool = False
+):
+    """Reassign existing episodes to notebooks based on content analysis."""
+    try:
+        logger.info("Starting episode reassignment based on content analysis")
+        
+        # Get all episodes
+        episodes_query = f"SELECT * FROM {PODCAST_EPISODE_TABLE}"
+        episodes_result = await db.query(episodes_query)
+        
+        if not episodes_result:
+            logger.info("No episodes found")
+            return StatusResponse(
+                status="success",
+                message="No episodes found to reassign"
+            )
+        
+        # Get all notebooks
+        notebook_query = "SELECT * FROM notebook"
+        notebooks_result = await db.query(notebook_query)
+        
+        if not notebooks_result:
+            logger.error("No notebooks found")
+            return StatusResponse(
+                status="error",
+                message="No notebooks found"
+            )
+        
+        # Keywords for different notebooks
+        notebook_keywords = {
+            "spacetime": ["spacetime", "einstein", "relativity", "gravity", "minkowski", "equivalence principle", "general relativity", "special relativity"],
+            "Quantum mechanics": ["quantum", "mechanics", "physics", "particle", "wave", "quantum mechanics"],
+            "Big Data Analytics": ["data", "analytics", "big data", "machine learning", "algorithm", "rpa", "automation"]
+        }
+        
+        reassigned_count = 0
+        
+        for ep in episodes_result:
+            if isinstance(ep, list) and len(ep) > 0:
+                ep = ep[0]
+            
+            ep_dict = ep.model_dump() if hasattr(ep, 'model_dump') else dict(ep)
+            episode_id = ep_dict.get('id')
+            episode_name = ep_dict.get('name', '')
+            episode_text = ep_dict.get('text', '')
+            
+            if not episode_id:
+                continue
+            
+            # Analyze content to find best matching notebook
+            best_match = None
+            best_score = 0
+            
+            for notebook in notebooks_result:
+                if isinstance(notebook, list) and len(notebook) > 0:
+                    notebook = notebook[0]
+                
+                notebook_dict = notebook.model_dump() if hasattr(notebook, 'model_dump') else dict(notebook)
+                notebook_id = notebook_dict.get('id')
+                notebook_name = notebook_dict.get('name', '')
+                
+                if notebook_id and notebook_name:
+                    # Calculate score based on keyword matches
+                    score = 0
+                    keywords = notebook_keywords.get(notebook_name, [])
+                    
+                    # Check episode name and text for keywords
+                    search_text = f"{episode_name} {episode_text}".lower()
+                    for keyword in keywords:
+                        if keyword.lower() in search_text:
+                            score += 1
+                    
+                    # Bonus for exact notebook name match in episode name
+                    if notebook_name.lower() in episode_name.lower():
+                        score += 2
+                    
+                    if score > best_score:
+                        best_score = score
+                        best_match = {
+                            "id": notebook_id,
+                            "name": notebook_name
+                        }
+            
+            if best_match and best_score > 0:
+                # Update the episode with the new notebook reference
+                content_source = {
+                    "type": "notebook",
+                    "id": best_match["id"],
+                    "name": best_match["name"]
+                }
+                
+                if debug:
+                    logger.info(f"Would reassign episode {episode_id} from current to {best_match['name']} (score: {best_score})")
+                else:
+                    update_query = f"UPDATE {episode_id} SET content_source = $content_source"
+                    await db.query(update_query, {"content_source": content_source})
+                    logger.info(f"Reassigned episode {episode_id} to notebook: {best_match['name']} (score: {best_score})")
+                
+                reassigned_count += 1
+        
+        return StatusResponse(
+            status="success",
+            message=f"Reassignment completed. Reassigned {reassigned_count} episodes based on content analysis."
+        )
+        
+    except Exception as e:
+        logger.error(f"Error reassigning episodes: {e}")
+        raise HTTPException(status_code=500, detail=f"Error reassigning episodes: {e}")
+
+@router.post("/migrate-episodes", response_model=StatusResponse)
+async def migrate_episodes_with_notebook_references(
+    db: AsyncSurreal = Depends(get_db_connection),
+    debug: bool = False
+):
+    """Migrate existing episodes to add notebook references based on their names or other clues."""
+    try:
+        logger.info("Starting episode migration to add notebook references")
+        
+        # Get all episodes without content_source
+        episodes_query = f"SELECT * FROM {PODCAST_EPISODE_TABLE} WHERE content_source IS NONE OR content_source = NONE"
+        episodes_result = await db.query(episodes_query)
+        
+        if not episodes_result:
+            logger.info("No episodes found without content_source")
+            return StatusResponse(
+                status="success",
+                message="No episodes need migration"
+            )
+        
+        migrated_count = 0
+        skipped_count = 0
+        
+        for ep in episodes_result:
+            if isinstance(ep, list) and len(ep) > 0:
+                ep = ep[0]
+            
+            ep_dict = ep.model_dump() if hasattr(ep, 'model_dump') else dict(ep)
+            episode_id = ep_dict.get('id')
+            episode_name = ep_dict.get('name', '')
+            
+            if not episode_id:
+                logger.warning(f"Skipping episode without ID: {ep_dict}")
+                skipped_count += 1
+                continue
+            
+            # Try to find a notebook that might be related to this episode based on content
+            notebook_query = "SELECT * FROM notebook"
+            notebooks_result = await db.query(notebook_query)
+            
+            best_match = None
+            if notebooks_result:
+                # Analyze episode content to find the best matching notebook
+                episode_text = ep_dict.get('text', '')
+                episode_name = ep_dict.get('name', '')
+                
+                # Keywords for different notebooks
+                notebook_keywords = {
+                    "spacetime": ["spacetime", "einstein", "relativity", "gravity", "minkowski", "equivalence principle"],
+                    "Quantum mechanics": ["quantum", "mechanics", "physics", "particle", "wave"],
+                    "Big Data Analytics": ["data", "analytics", "big data", "machine learning", "algorithm"]
+                }
+                
+                # Score each notebook based on keyword matches
+                best_score = 0
+                for notebook in notebooks_result:
+                    if isinstance(notebook, list) and len(notebook) > 0:
+                        notebook = notebook[0]
+                    
+                    notebook_dict = notebook.model_dump() if hasattr(notebook, 'model_dump') else dict(notebook)
+                    notebook_id = notebook_dict.get('id')
+                    notebook_name = notebook_dict.get('name', '')
+                    
+                    if notebook_id and notebook_name:
+                        # Calculate score based on keyword matches
+                        score = 0
+                        keywords = notebook_keywords.get(notebook_name, [])
+                        
+                        # Check episode name and text for keywords
+                        search_text = f"{episode_name} {episode_text}".lower()
+                        for keyword in keywords:
+                            if keyword.lower() in search_text:
+                                score += 1
+                        
+                        # Bonus for exact notebook name match in episode name
+                        if notebook_name.lower() in episode_name.lower():
+                            score += 2
+                        
+                        if score > best_score:
+                            best_score = score
+                            best_match = {
+                                "id": notebook_id,
+                                "name": notebook_name
+                            }
+                
+                # If no good match found, use the first notebook as fallback
+                if not best_match and notebooks_result:
+                    notebook = notebooks_result[0]
+                    if isinstance(notebook, list) and len(notebook) > 0:
+                        notebook = notebook[0]
+                    
+                    notebook_dict = notebook.model_dump() if hasattr(notebook, 'model_dump') else dict(notebook)
+                    notebook_id = notebook_dict.get('id')
+                    notebook_name = notebook_dict.get('name', '')
+                    
+                    if notebook_id and notebook_name:
+                        best_match = {
+                            "id": notebook_id,
+                            "name": notebook_name
+                        }
+            
+            if best_match:
+                # Update the episode with the notebook reference
+                content_source = {
+                    "type": "notebook",
+                    "id": best_match["id"],
+                    "name": best_match["name"]
+                }
+                
+                if debug:
+                    logger.info(f"Would update episode {episode_id} with notebook reference: {best_match['name']}")
+                else:
+                    update_query = f"UPDATE {episode_id} SET content_source = $content_source"
+                    await db.query(update_query, {"content_source": content_source})
+                    logger.info(f"Updated episode {episode_id} with notebook reference: {best_match['name']}")
+                
+                migrated_count += 1
+            else:
+                logger.warning(f"No suitable notebook found for episode {episode_id}")
+                skipped_count += 1
+        
+        return StatusResponse(
+            status="success",
+            message=f"Migration completed. Migrated {migrated_count} episodes, skipped {skipped_count} episodes."
+        )
+        
+    except Exception as e:
+        logger.error(f"Error migrating episodes: {e}")
+        raise HTTPException(status_code=500, detail=f"Error migrating episodes: {e}")
 
 @router.post("/cleanup", response_model=StatusResponse)
 async def cleanup_incomplete_episodes(

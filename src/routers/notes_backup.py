@@ -8,12 +8,9 @@ from loguru import logger
 
 from ..database import get_db_connection
 from ..models import (
-    Note, NoteCreate, NoteUpdate, NoteSummary, NoteResponse, StatusResponse
+    Note, NoteCreate, NoteUpdate, NoteSummary, StatusResponse
 )
 from open_notebook.domain.models import model_manager
-from open_notebook.graphs.prompt import graph as prompt_graph
-from open_notebook.utils import surreal_clean
-from langchain_core.runnables import RunnableConfig
 
 # Create a router for note-related endpoints
 # Notes are often accessed in the context of a notebook, but can also be managed directly by ID
@@ -33,20 +30,11 @@ def convert_record_id_to_string(data):
         if data is None:
             return None
         elif isinstance(data, dict):
-            # Check if this is a RecordID dict with table_name and id/record_id
-            if 'table_name' in data and ('id' in data or 'record_id' in data):
-                table_name = data['table_name']
-                record_id = data.get('id') or data.get('record_id')
-                return f"{table_name}:{record_id}"
-            else:
-                # Recursively convert other dict keys
-                return {k: convert_record_id_to_string(v) for k, v in data.items()}
+            return {k: convert_record_id_to_string(v) for k, v in data.items()}
         elif isinstance(data, list):
             return [convert_record_id_to_string(item) for item in data]
         elif hasattr(data, 'table_name') and hasattr(data, 'record_id'):
             return f"{data.table_name}:{data.record_id}"
-        elif hasattr(data, 'table_name') and hasattr(data, 'id'):
-            return f"{data.table_name}:{data.id}"
         elif hasattr(data, '__dict__'):
             # Handle objects that might have RecordID attributes
             return {k: convert_record_id_to_string(v) for k, v in data.__dict__.items()}
@@ -55,8 +43,7 @@ def convert_record_id_to_string(data):
             import ast
             try:
                 id_dict = ast.literal_eval(data)
-                record_id = id_dict.get('id') or id_dict.get('record_id')
-                return f"{id_dict['table_name']}:{record_id}"
+                return f"{id_dict['table_name']}:{id_dict['id']}"
             except:
                 return data
         else:
@@ -66,8 +53,6 @@ def convert_record_id_to_string(data):
         # Return a safe fallback
         if hasattr(data, 'table_name') and hasattr(data, 'record_id'):
             return f"{data.table_name}:{data.record_id}"
-        elif hasattr(data, 'table_name') and hasattr(data, 'id'):
-            return f"{data.table_name}:{data.id}"
         return str(data) if data is not None else None
 
 async def create_note_embedding(db: AsyncSurreal, note_id: str, content: str):
@@ -87,33 +72,16 @@ async def create_note_embedding(db: AsyncSurreal, note_id: str, content: str):
 async def link_note_to_notebook(db: AsyncSurreal, note_id: str, notebook_id: str):
     """Creates artifact relation between note and notebook."""
     try:
-        logger.info(f"🔗 Starting link_note_to_notebook: note_id={note_id}, notebook_id={notebook_id}")
-        
         # Create the relationship using proper SurrealDB relation syntax
         query = f"""
         RELATE {note_id}->artifact->{notebook_id} SET 
             created = time::now(),
             updated = time::now();
         """
-        logger.info(f"🔗 Executing relation query: {query}")
-        result = await db.query(query)
-        logger.info(f"🔗 Relation query result: {result}")
-        
-        # Verify the relationship was created
-        verify_query = f"""
-        SELECT * FROM artifact 
-        WHERE out = $notebook_id 
-        AND in = $note_id;
-        """
-        logger.info(f"🔗 Verifying relationship with query: {verify_query}")
-        verify_result = await db.query(verify_query, {
-            "notebook_id": notebook_id,
-            "note_id": note_id
-        })
-        logger.info(f"🔗 Verification result: {verify_result}")
-        
+        logger.debug(f"Executing relation query: {query}")
+        await db.query(query)
     except Exception as e:
-        logger.error(f"❌ Error linking note {note_id} to notebook {notebook_id}: {str(e)}")
+        logger.error(f"Error linking note {note_id} to notebook {notebook_id}: {str(e)}")
         raise
 
 @router.post("/notes", response_model=Note, status_code=status.HTTP_201_CREATED)
@@ -122,7 +90,7 @@ async def create_note(
     notebook_name: Optional[str] = None,
     db: AsyncSurreal = Depends(get_db_connection)
 ):
-    """Creates a new note, optionally associating it with a notebook by name or ID."""
+    """Creates a new note, optionally associating it with a notebook by name."""
     try:
         # Prepare note data
         data_to_create = note_data.model_dump()
@@ -133,50 +101,8 @@ async def create_note(
         # Set note type if not provided
         if "note_type" not in data_to_create or not data_to_create["note_type"]:
             data_to_create["note_type"] = "human"
-            
-        # Handle notebook association - check for notebook_id in request body first
-        notebook_id = data_to_create.get("notebook_id")
-        
-        if notebook_id:
-            # notebook_id is provided in request body (frontend sends this)
-            logger.info(f"Using notebook_id from request body: {notebook_id}")
-            # Validate that the notebook exists
-            try:
-                notebook_check = await db.select(notebook_id)
-                if not notebook_check:
-                    raise HTTPException(status_code=404, detail=f"Notebook with id '{notebook_id}' not found")
-            except Exception as e:
-                logger.warning(f"Failed to validate notebook_id, but note will be created: {str(e)}")
-                
-        elif notebook_name:
-            # Fallback to notebook_name query parameter (legacy support)
-            try:
-                # Find notebook by name
-                notebook_query = """
-                SELECT * FROM notebook 
-                WHERE string::lowercase(name) = string::lowercase($name)
-                LIMIT 1;
-                """
-                notebook_res = await db.query(notebook_query, {"name": notebook_name})
-                
-                if not notebook_res or not notebook_res[0]:
-                    raise HTTPException(status_code=404, detail=f"Notebook with name '{notebook_name}' not found")
-                
-                notebook = notebook_res[0]
-                notebook_id = notebook['id']
-                if hasattr(notebook_id, 'table_name') and hasattr(notebook_id, 'record_id'):
-                    notebook_id = f"{notebook_id.table_name}:{notebook_id.record_id}"
-                else:
-                    notebook_id = str(notebook_id)
-                
-                # Add notebook_id to the creation data
-                data_to_create["notebook_id"] = notebook_id
-                logger.info(f"Adding notebook_id {notebook_id} to note creation data from notebook name")
-                
-            except Exception as e:
-                logger.warning(f"Failed to get notebook_id from name, but note will be created: {str(e)}")
 
-        # Create the note with all data including notebook_id
+        # Create the note first without embedding
         created_notes = await db.create(NOTE_TABLE, data_to_create)
         if not created_notes:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create note")
@@ -197,16 +123,7 @@ async def create_note(
                 logger.warning(f"Failed to create embedding for note {note_id}: {str(e)}")
                 # Continue even if embedding creation fails
 
-        # Create artifact relationship if notebook_id is provided
-        if notebook_id:
-            try:
-                logger.info(f"Creating artifact relationship between note {note_id} and notebook {notebook_id}")
-                await link_note_to_notebook(db, note_id, notebook_id)
-                logger.info(f"Successfully linked note {note_id} to notebook {notebook_id}")
-            except Exception as e:
-                logger.error(f"Failed to link note to notebook: {str(e)}")
-                # Don't fail the entire operation, but log the error
-                # The note is still created, just not linked
+        # Note: notebook_id is now included in the initial creation data above
 
         # Convert and return the created note
         converted_note = convert_record_id_to_string(created_note)
@@ -327,108 +244,14 @@ async def create_note_in_notebook(
         logger.error(f"Error creating note in notebook {notebook_name}: {str(e)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Internal server error during note creation: {e}")
 
-@router.get("/notebooks/{notebook_id}/notes", response_model=List[NoteSummary])
-async def list_notes_by_notebook_id(
-    notebook_id: str,
-    db: AsyncSurreal = Depends(get_db_connection)
-):
-    """Lists all notes in a notebook specified by ID using artifact relationships."""
-    try:
-        logger.info(f"🔍 === STARTING NOTEBOOK NOTES QUERY BY ID ===")
-        logger.info(f"🔍 Notebook ID: '{notebook_id}'")
-        
-        # Ensure notebook_id is in proper format
-        if ":" not in notebook_id:
-            notebook_id = f"notebook:{notebook_id}"
-        
-        # First, verify the notebook exists and get its raw ID
-        notebook_query = "SELECT * FROM notebook WHERE id = $nb_id LIMIT 1;"
-        notebook_res = await db.query(notebook_query, {"nb_id": notebook_id})
-        
-        if not notebook_res or not notebook_res[0]:
-            logger.error(f"❌ Notebook with ID '{notebook_id}' not found")
-            raise HTTPException(status_code=404, detail=f"Notebook with ID '{notebook_id}' not found")
-        
-        notebook = notebook_res[0]
-        raw_notebook_id = notebook['id']  # Keep the raw SurrealDB ID object
-        
-        logger.info(f"📓 Found notebook: {notebook.get('name', 'Unknown')} (ID: {notebook_id}, raw: {raw_notebook_id})")
-
-        # Step 1: Get artifacts for this notebook
-        artifacts_query = "SELECT * FROM artifact WHERE out = $nb_id"
-        artifacts_result = await db.query(artifacts_query, {"nb_id": raw_notebook_id})
-        logger.info(f"🔗 Found {len(artifacts_result) if artifacts_result else 0} artifacts for notebook")
-        
-        notes_res = []
-        if artifacts_result:
-            # Step 2: Get note IDs from artifacts and query notes individually
-            note_ids = []
-            for artifact in artifacts_result:
-                note_id = artifact.get('in')
-                if note_id:
-                    note_ids.append(note_id)
-                    
-            logger.info(f"🔗 Note IDs from artifacts: {note_ids}")
-            
-            # Step 3: Query each note individually
-            for note_id in note_ids:
-                note_query = "SELECT id, title, content, created, updated, note_type, metadata, embedding FROM note WHERE id = $note_id"
-                note_result = await db.query(note_query, {"note_id": note_id})
-                if note_result:
-                    notes_res.extend(note_result)
-            
-            logger.info(f"📝 Retrieved {len(notes_res)} notes")
-        
-        notes_converted = []
-        
-        if notes_res:
-            logger.info(f"📝 Processing {len(notes_res)} notes from artifact relationships")
-            for note_data in notes_res:
-                try:
-                    note = convert_record_id_to_string(note_data)
-                    
-                    note_id = str(note.get("id", "")) if note.get("id") else ""
-                    note_title = note.get("title", "") if note.get("title") else ""
-                    note_type = note.get("note_type", "human") if note.get("note_type") else "human"
-                    note_created = note.get("created")
-                    note_updated = note.get("updated")
-                    
-                    notes_converted.append(NoteSummary(
-                        id=note_id,
-                        title=note_title,
-                        note_type=note_type,
-                        created=note_created,
-                        updated=note_updated
-                    ))
-                    logger.debug(f"Added note to list: {note_title}")
-                except Exception as e:
-                    logger.error(f"Error processing note_data: {e}")
-                    logger.error(f"note_data: {note_data}")
-                    continue
-        
-        logger.info(f"✅ Returning {len(notes_converted)} notes for notebook ID '{notebook_id}'")
-        logger.info(f"📝 Notes: {[note.title for note in notes_converted]}")
-        return notes_converted
-
-    except HTTPException as http_exc:
-        logger.error(f"❌ HTTP Exception: {http_exc}")
-        raise http_exc
-    except Exception as e:
-        logger.error(f"❌ Error listing notes for notebook ID {notebook_id}: {str(e)}")
-        logger.error(f"❌ Exception type: {type(e)}")
-        logger.error(f"❌ Exception details: {e}")
-        import traceback
-        logger.error(f"❌ Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Internal server error listing notes: {e}")
-
-@router.get("/notebooks/by-name/{notebook_name}/notes", response_model=List[Note])
+@router.get("/notebooks/by-name/{notebook_name}/notes", response_model=List[NoteSummary])
 async def list_notes_by_notebook_name(
     notebook_name: str,
     db: AsyncSurreal = Depends(get_db_connection)
 ):
     """Lists all notes in a notebook specified by name. Uses the same logic as Streamlit."""
     try:
-        logger.info(f"🔍 === STARTING NOTEBOOK NOTES QUERY BY NAME ===")
+        logger.info(f"🔍 === STARTING NOTEBOOK NOTES QUERY ===")
         logger.info(f"🔍 Notebook name: '{notebook_name}'")
         
         # First fetch notebook id by name
@@ -456,30 +279,17 @@ async def list_notes_by_notebook_name(
 
         logger.info(f"📓 Found notebook raw ID: {raw_notebook_id} (string: {notebook_id_str})")
 
-        # Step 1: Get artifacts for this notebook
-        artifacts_query = "SELECT * FROM artifact WHERE out = $nb_id"
-        artifacts_result = await db.query(artifacts_query, {"nb_id": raw_notebook_id})
-        logger.info(f"🔗 Found {len(artifacts_result) if artifacts_result else 0} artifacts for notebook")
+        # Query notes directly using notebook_id field
+        notes_query = f"""
+        SELECT id, title, content, created, updated, note_type, metadata, embedding
+        FROM note
+        WHERE notebook_id = $notebook_id
+        ORDER BY updated DESC;
+        """
         
-        notes_res = []
-        if artifacts_result:
-            # Step 2: Get note IDs from artifacts and query notes individually
-            note_ids = []
-            for artifact in artifacts_result:
-                note_id = artifact.get('in')
-                if note_id:
-                    note_ids.append(note_id)
-                    
-            logger.info(f"🔗 Note IDs from artifacts: {note_ids}")
-            
-            # Step 3: Query each note individually
-            for note_id in note_ids:
-                note_query = "SELECT id, title, content, created, updated, note_type, metadata, embedding FROM note WHERE id = $note_id"
-                note_result = await db.query(note_query, {"note_id": note_id})
-                if note_result:
-                    notes_res.extend(note_result)
-            
-            logger.info(f"📝 Retrieved {len(notes_res)} notes")
+        logger.info(f"🔗 Querying notes for notebook using direct notebook_id: {notes_query}")
+        notes_res = await db.query(notes_query, {"notebook_id": notebook_id_str})
+        logger.info(f"📝 Query result: {notes_res}")
         
         notes_converted = []
         
@@ -494,28 +304,25 @@ async def list_notes_by_notebook_name(
                     # Ensure all fields are properly converted
                     note_id = str(note.get("id", "")) if note.get("id") else ""
                     note_title = note.get("title", "") if note.get("title") else ""
-                    note_content = note.get("content", "") if note.get("content") else ""
                     note_type = note.get("note_type", "human") if note.get("note_type") else "human"
                     note_created = note.get("created")
                     note_updated = note.get("updated")
-                    note_embedding = note.get("embedding")
                     
-                    notes_converted.append(Note(
+                    notes_converted.append(NoteSummary(
                         id=note_id,
                         title=note_title,
-                        content=note_content,
                         note_type=note_type,
                         created=note_created,
-                        updated=note_updated,
-                        embedding=note_embedding
+                        updated=note_updated
                     ))
                     logger.debug(f"Added note to list: {note_title}")
                 except Exception as e:
                     logger.error(f"Error processing note_data: {e}")
                     logger.error(f"note_data: {note_data}")
                     continue
+        else:
+            logger.info("📝 No notes found for this notebook")
         
-        # Return only notes that are properly linked through artifact relationships
         logger.info(f"✅ Returning {len(notes_converted)} notes for notebook '{notebook_name}'")
         logger.info(f"📝 Notes: {[note.title for note in notes_converted]}")
         return notes_converted
@@ -581,60 +388,12 @@ async def search_notes(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Internal server error searching notes: {e}")
 
 # Add a simple endpoint to list all notes (for verification)
-@router.get("/notes", response_model=List[NoteSummary])
-async def list_notes(
-    db: AsyncSurreal = Depends(get_db_connection)
-):
-    """
-    List all notes in the database.
-    This is the main endpoint that the frontend expects.
-    """
-    try:
-        # Get all notes
-        all_notes_query = "SELECT * FROM note ORDER BY updated DESC;"
-        all_notes = await db.query(all_notes_query)
-        
-        if not all_notes:
-            return []
-        
-        notes_converted = []
-        for note in all_notes:
-            note_dict = convert_record_id_to_string(note)
-            # Properly convert the ID to table:id format
-            note_id = note_dict.get("id", "")
-            if isinstance(note_id, dict) and 'table_name' in note_id and 'id' in note_id:
-                note_id = f"{note_id['table_name']}:{note_id['id']}"
-            elif hasattr(note_id, 'table_name') and hasattr(note_id, 'record_id'):
-                note_id = f"{note_id.table_name}:{note_id.record_id}"
-            else:
-                note_id = str(note_id)
-            
-            notes_converted.append(NoteSummary(
-                id=note_id,
-                title=note_dict.get("title", ""),
-                content=note_dict.get("content", ""),
-                note_type=note_dict.get("note_type", "human"),
-                created=note_dict.get("created"),
-                updated=note_dict.get("updated"),
-                metadata=note_dict.get("metadata", {})
-            ))
-        
-        logger.info(f"Found {len(notes_converted)} notes in database")
-        return notes_converted
-        
-    except Exception as e:
-        logger.error(f"Error listing notes: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-            detail=f"Internal server error: {str(e)}"
-        )
-
-@router.get("/notes/all", response_model=List[NoteResponse])
+@router.get("/notes/all", response_model=List[NoteSummary])
 async def list_all_notes(
     db: AsyncSurreal = Depends(get_db_connection)
 ):
     """
-    List all notes in the database with full details.
+    List all notes in the database.
     Useful for verifying note creation and debugging.
     """
     try:
@@ -649,23 +408,14 @@ async def list_all_notes(
         for note in all_notes:
             note_dict = convert_record_id_to_string(note)
             # Properly convert the ID to table:id format
-            note_id = note_dict.get("id", "")
-            if isinstance(note_id, dict) and 'table_name' in note_id and 'id' in note_id:
-                note_id = f"{note_id['table_name']}:{note_id['id']}"
-            elif hasattr(note_id, 'table_name') and hasattr(note_id, 'record_id'):
-                note_id = f"{note_id.table_name}:{note_id.record_id}"
-            else:
-                note_id = str(note_id)
+            note_id = convert_record_id_to_string(note_dict.get("id", ""))
             
-            notes_converted.append(NoteResponse(
-                id=note_id,
+            notes_converted.append(NoteSummary(
+                id=str(note_id),
                 title=note_dict.get("title", ""),
-                content=note_dict.get("content", ""),
                 note_type=note_dict.get("note_type", "human"),
                 created=note_dict.get("created"),
-                updated=note_dict.get("updated"),
-                metadata=note_dict.get("metadata", {}),
-                notebook_id=note_dict.get("notebook_id")
+                updated=note_dict.get("updated")
             ))
         
         logger.info(f"Found {len(notes_converted)} notes in database")
@@ -687,29 +437,12 @@ async def get_note(
     if ":" not in note_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid note ID format. Expected table:id, got {note_id}")
     try:
-        logger.info(f"🔍 Getting note with ID: {note_id}")
-        # Use the same query pattern as the list endpoint
-        query = "SELECT * FROM note ORDER BY updated DESC;"
-        all_notes = await db.query(query)
-        logger.info(f"🔍 All notes query result: {len(all_notes) if all_notes else 0} notes found")
-        
-        # Find the specific note by ID
-        result = None
-        if all_notes:
-            for note in all_notes:
-                note_dict = convert_record_id_to_string(note)
-                note_id_str = note_dict.get("id", "")
-                if note_id_str == note_id:
-                    result = [note]
-                    break
-        logger.info(f"🔍 Query result: {result}")
-        
-        if result and len(result) > 0:
-            note_data = result[0]
-            logger.info(f"🔍 Found note data: {note_data}")
-            return Note(**convert_record_id_to_string(note_data))
-        
-        logger.error(f"❌ Note with id {note_id} not found")
+        result = await db.select(note_id)
+        # SurrealDB.select can return a list – grab the first item if so
+        if isinstance(result, list):
+            result = result[0] if result else None
+        if result:
+            return Note(**convert_record_id_to_string(result))
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Note with id {note_id} not found")
     except HTTPException as http_exc:
         raise http_exc
@@ -818,51 +551,13 @@ async def get_note_by_title(
             detail=f"Internal server error: {str(e)}"
         )
 
-@router.put("/notes/{note_id}", response_model=Note)
-async def update_note_put(
-    note_id: str,
-    note_update: NoteUpdate,
-    db: AsyncSurreal = Depends(get_db_connection)
-):
-    """Updates a note's title or content using PUT method (frontend compatibility)."""
-    if ":" not in note_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid note ID format. Expected table:id, got {note_id}")
-
-    update_data = note_update.model_dump(exclude_unset=True)
-    if not update_data:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields provided for update.")
-
-    try:
-        # Update timestamp
-        update_data["updated"] = datetime.utcnow()
-
-        # If content is being updated, update embedding
-        if "content" in update_data:
-            await create_note_embedding(db, note_id, update_data["content"])
-
-        # Update the note
-        updated_notes = await db.merge(note_id, update_data)
-        if updated_notes:
-            return convert_record_id_to_string(updated_notes)
-        else:
-            existing = await db.select(note_id)
-            if not existing:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Note with id {note_id} not found for update")
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update note or empty response")
-
-    except HTTPException as http_exc:
-        raise http_exc
-    except Exception as e:
-        logger.error(f"Error updating note {note_id}: {str(e)}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Internal server error updating note: {e}")
-
 @router.patch("/notes/{note_id}", response_model=Note)
 async def update_note(
     note_id: str,
     note_update: NoteUpdate,
     db: AsyncSurreal = Depends(get_db_connection)
 ):
-    """Updates a note's title or content using PATCH method."""
+    """Updates a note's title or content."""
     if ":" not in note_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid note ID format. Expected table:id, got {note_id}")
 
@@ -903,32 +598,13 @@ async def delete_note(
     if ":" not in note_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid note ID format. Expected table:id, got {note_id}")
     try:
-        logger.info(f"🗑️ Attempting to delete note with ID: {note_id}")
-        # Check if note exists using the same approach as get_note
-        query = "SELECT * FROM note ORDER BY updated DESC;"
-        all_notes = await db.query(query)
-        logger.info(f"🔍 All notes query result: {len(all_notes) if all_notes else 0} notes found")
-        
-        # Find the specific note by ID
-        existing = None
-        if all_notes:
-            for note in all_notes:
-                note_dict = convert_record_id_to_string(note)
-                note_id_str = note_dict.get("id", "")
-                if note_id_str == note_id:
-                    existing = [note]
-                    break
-        
-        logger.info(f"🔍 Note existence check result: {existing}")
-        
-        if not existing or len(existing) == 0:
-            logger.error(f"❌ Note with id {note_id} not found for deletion")
+        # Check if note exists
+        existing = await db.select(note_id)
+        if not existing:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Note with id {note_id} not found for deletion")
 
         # Delete the note
-        logger.info(f"🗑️ Deleting note {note_id}")
         await db.delete(note_id)
-        logger.info(f"✅ Note {note_id} deleted successfully")
         return StatusResponse(status="success", message=f"Note {note_id} deleted successfully.")
 
     except HTTPException as http_exc:
@@ -1668,92 +1344,3 @@ async def fix_duplicate_artifacts(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail=f"Internal server error: {str(e)}"
         )
-
-
-# Pydantic model for creating notes from chat content
-class ChatNoteCreate(BaseModel):
-    content: str = Field(..., description="The AI response content to save as a note")
-    notebook_id: str = Field(..., description="The notebook ID to associate the note with")
-
-
-@router.post("/notes/from-chat", response_model=NoteResponse)
-async def create_note_from_chat(
-    request: ChatNoteCreate,
-    db: AsyncSurreal = Depends(get_db_connection)
-):
-    """
-    Create a note from AI chat response content.
-    This mimics the Streamlit make_note_from_chat functionality.
-    """
-    try:
-        logger.info(f"Creating note from chat content for notebook {request.notebook_id}")
-        
-        # Generate title using AI (same as Streamlit implementation)
-        prompt = "Based on the Note below, please provide a Title for this content, with max 15 words"
-        config = RunnableConfig(configurable={"model_id": None})  # Use default model
-        
-        logger.info("Generating title using prompt graph...")
-        output = prompt_graph.invoke(
-            dict(input_text=request.content, prompt=prompt), 
-            config=config
-        )
-        title = surreal_clean(output["output"])
-        
-        logger.info(f"Generated title: {title}")
-        
-        # Create the note with AI-generated title
-        note_data = {
-            "title": title,
-            "content": request.content,
-            "note_type": "ai",  # Mark as AI-generated
-            "created": datetime.utcnow(),
-            "updated": datetime.utcnow(),
-            "embedding": []  # Initialize embedding as empty array
-        }
-        
-        # Create the note using the SurrealDB client
-        created_notes = await db.create(NOTE_TABLE, note_data)
-        
-        if not created_notes:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to create note"
-            )
-        
-        # Get the created note
-        created_note = created_notes[0] if isinstance(created_notes, list) else created_notes
-        note_id = convert_record_id_to_string(created_note["id"])
-        
-        logger.info(f"Created note with ID: {note_id}")
-        
-        # Link the note to the notebook using the existing helper function
-        await link_note_to_notebook(db, note_id, request.notebook_id)
-        
-        logger.info(f"Linked note {note_id} to notebook {request.notebook_id}")
-        
-        # Create embedding if content is provided
-        if request.content:
-            try:
-                await create_note_embedding(db, note_id, request.content)
-            except Exception as e:
-                logger.warning(f"Failed to create embedding for note {note_id}: {str(e)}")
-        
-        # Return the created note
-        return NoteResponse(
-            id=note_id,
-            title=title,
-            content=request.content,
-            note_type="ai",
-            created=note_data["created"].isoformat(),
-            updated=note_data["updated"].isoformat()
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error creating note from chat content: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
-        )
-

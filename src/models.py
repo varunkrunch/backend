@@ -118,6 +118,7 @@ class SourceSummary(BaseModel):
     created: Optional[datetime] = None
     updated: Optional[datetime] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    insights: List[Dict[str, Any]] = Field(default_factory=list)
 
 class SourceWithInsightsResponse(BaseModel):
     id: str

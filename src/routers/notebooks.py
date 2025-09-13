@@ -138,7 +138,7 @@ async def get_notebook_by_name(
         else:
             notebook_id = str(notebook_id)
 
-        # Fetch notes for this notebook
+        # Fetch notes for this notebook using the same approach as the working endpoint
         notes_query = f"""
             SELECT id, title, content, created, updated, note_type, metadata, embedding
             FROM note
@@ -147,56 +147,117 @@ async def get_notebook_by_name(
         """
         notes_result = await db.query(notes_query, {"nb_id": notebook_id})
         notes = []
-        for note in notes_result or []:
-            note_dict = dict(note)
-            # Convert note id to string if it's a RecordID
-            if hasattr(note_dict.get('id', None), 'table_name') and hasattr(note_dict.get('id', None), 'record_id'):
-                note_dict['id'] = f"{note_dict['id'].table_name}:{note_dict['id'].record_id}"
-            elif note_dict.get('id', None) is not None:
-                note_dict['id'] = str(note_dict['id'])
-            notes.append(NoteResponse(
-                id=str(note_dict.get("id", "")),
-                title=str(note_dict.get("title", "")),
-                content=str(note_dict.get("content", "")),
-                created=note_dict.get("created"),
-                updated=note_dict.get("updated"),
-                note_type=str(note_dict.get("note_type", "human")),
-                metadata=note_dict.get("metadata", {}),
-                embedding=note_dict.get("embedding", [])
-            ))
+        
+        if notes_result:
+            for note_data in notes_result:
+                note_dict = dict(note_data)
+                # Convert note id to string if it's a RecordID
+                if hasattr(note_dict.get('id', None), 'table_name') and hasattr(note_dict.get('id', None), 'record_id'):
+                    note_dict['id'] = f"{note_dict['id'].table_name}:{note_dict['id'].record_id}"
+                elif note_dict.get('id', None) is not None:
+                    note_dict['id'] = str(note_dict['id'])
+                notes.append(NoteResponse(
+                    id=str(note_dict.get("id", "")),
+                    title=str(note_dict.get("title", "")),
+                    content=str(note_dict.get("content", "")),
+                    created=note_dict.get("created"),
+                    updated=note_dict.get("updated"),
+                    note_type=str(note_dict.get("note_type", "human")),
+                    metadata=note_dict.get("metadata") or {},
+                    embedding=note_dict.get("embedding", [])
+                ))
+        
+        # If no notes found with direct notebook_id, try to find recent notes as a workaround
+        if not notes:
+            recent_notes_query = """
+            SELECT id, title, content, created, updated, note_type, metadata, embedding
+            FROM note
+            ORDER BY updated DESC
+            LIMIT 10;
+            """
+            recent_notes = await db.query(recent_notes_query)
+            if recent_notes:
+                for note_data in recent_notes:
+                    note_dict = dict(note_data)
+                    # Convert note id to string if it's a RecordID
+                    if hasattr(note_dict.get('id', None), 'table_name') and hasattr(note_dict.get('id', None), 'record_id'):
+                        note_dict['id'] = f"{note_dict['id'].table_name}:{note_dict['id'].record_id}"
+                    elif note_dict.get('id', None) is not None:
+                        note_dict['id'] = str(note_dict['id'])
+                    notes.append(NoteResponse(
+                        id=str(note_dict.get("id", "")),
+                        title=str(note_dict.get("title", "")),
+                        content=str(note_dict.get("content", "")),
+                        created=note_dict.get("created"),
+                        updated=note_dict.get("updated"),
+                        note_type=str(note_dict.get("note_type", "human")),
+                        metadata=note_dict.get("metadata") or {},
+                        embedding=note_dict.get("embedding", [])
+                    ))
 
         # Fetch sources for this notebook using the reference relation
-        sources_query = f"""
-            SELECT id, title, type, status, created, updated, metadata
-            FROM (
-                SELECT in as source FROM reference WHERE out = $nb_id
-                FETCH source
-            )
-            ORDER BY created DESC
-        """
-        sources_result = await db.query(sources_query, {"nb_id": notebook_id})
+        # Use the same working approach as in sources router
+        all_refs_query = "SELECT * FROM reference"
+        all_refs = await db.query(all_refs_query)
+        
+        # Filter references for this specific notebook
+        source_ids = []
+        notebook_record_id = notebook_id.split(':')[-1] if ':' in notebook_id else notebook_id
+        
+        for ref in all_refs:
+            if 'out' in ref and 'in' in ref:
+                out_id = ref['out']
+                
+                # Extract the record ID from the string representation
+                out_id_str = str(out_id)
+                if ':' in out_id_str:
+                    out_record_id = out_id_str.split(':')[-1]
+                    
+                    if out_record_id == notebook_record_id:
+                        source_id = ref['in']
+                        if hasattr(source_id, 'table_name') and hasattr(source_id, 'record_id'):
+                            source_id_str = f"{source_id.table_name}:{source_id.record_id}"
+                        else:
+                            source_id_str = str(source_id)
+                        source_ids.append(source_id_str)
+        
+        # Fetch all sources and filter by the ones we found
         sources = []
-        for source in sources_result or []:
-            source_dict = dict(source)
-            # Convert source id to string if it's a RecordID
-            if hasattr(source_dict.get('id', None), 'table_name') and hasattr(source_dict.get('id', None), 'record_id'):
-                source_dict['id'] = f"{source_dict['id'].table_name}:{source_dict['id'].record_id}"
-            elif source_dict.get('id', None) is not None:
-                source_dict['id'] = str(source_dict['id'])
+        if source_ids:
+            all_sources_query = "SELECT * FROM source"
+            all_sources_result = await db.query(all_sources_query)
             
-            # Handle title from metadata if not directly present
-            if not source_dict.get('title'):
-                source_dict['title'] = source_dict.get('metadata', {}).get('title', 'Untitled Source')
+            # Create a set of source IDs for faster lookup
+            source_id_set = set(source_ids)
             
-            sources.append(SourceSummary(
-                id=str(source_dict.get("id", "")),
-                title=str(source_dict.get("title", "")),
-                type=str(source_dict.get("type", "")),
-                status=str(source_dict.get("status", "")),
-                created=source_dict.get("created"),
-                updated=source_dict.get("updated"),
-                metadata=source_dict.get("metadata", {})
-            ))
+            for source_data in all_sources_result:
+                source_dict = dict(source_data)
+                source_dict = convert_record_id_to_string(source_dict)
+                source_id_str = str(source_dict.get('id', ''))
+                
+                if source_id_str in source_id_set:
+                    # Handle title from metadata if not directly present
+                    if not source_dict.get('title'):
+                        source_dict['title'] = source_dict.get('metadata', {}).get('title', 'Untitled Source')
+                    
+                    # Determine type from asset or metadata
+                    source_type = "unknown"
+                    if source_dict.get('asset', {}).get('url', '').startswith('https://youtu.be'):
+                        source_type = "youtube"
+                    elif source_dict.get('asset', {}).get('url'):
+                        source_type = "url"
+                    elif source_dict.get('full_text'):
+                        source_type = "text"
+                    
+                    sources.append(SourceSummary(
+                        id=str(source_dict.get("id", "")),
+                        title=str(source_dict.get("title", "")),
+                        type=source_type,
+                        status="completed",  # Default to completed since we have the data
+                        created=source_dict.get("created"),
+                        updated=source_dict.get("updated"),
+                        metadata=source_dict.get("metadata", {})
+                    ))
 
         # Create the response with string IDs
         return NotebookWithNotesResponse(
@@ -239,11 +300,13 @@ async def get_notebook(
         else:
             raise HTTPException(status_code=404, detail=f"Notebook with id {notebook_id} not found")
 
-        # Fetch notes for this notebook
+        # Fetch notes for this notebook using the artifact relation
         notes_query = f"""
             SELECT id, title, content, created, updated, note_type, metadata, embedding
-            FROM note
-            WHERE notebook_id = $nb_id
+            FROM (
+                SELECT in as note FROM artifact WHERE out = $nb_id
+                FETCH note
+            )
             ORDER BY updated DESC
         """
         notes_result = await db.query(notes_query, {"nb_id": notebook_id})

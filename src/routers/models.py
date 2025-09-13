@@ -379,6 +379,11 @@ async def list_models(
     models = []
     for model in result:
         model_data = convert_surreal_record(model)
+        # Add default values for missing required fields
+        if "created" not in model_data:
+            model_data["created"] = datetime.utcnow()
+        if "updated" not in model_data:
+            model_data["updated"] = datetime.utcnow()
         model_data["provider_status"] = provider_status.get(model_data["provider"], False)
         models.append(ModelWithProvider(**model_data))
     
@@ -402,7 +407,15 @@ async def list_models_by_type(
     if not result:
         return ModelListResponse(models=[])
     
-    models = [Model(**convert_surreal_record(model)) for model in result]
+    models = []
+    for model in result:
+        model_data = convert_surreal_record(model)
+        # Add default values for missing required fields
+        if "created" not in model_data:
+            model_data["created"] = datetime.utcnow()
+        if "updated" not in model_data:
+            model_data["updated"] = datetime.utcnow()
+        models.append(Model(**model_data))
     return ModelListResponse(models=models)
 
 @router.get("/models/{model_id}", response_model=ModelWithProvider)
@@ -423,6 +436,11 @@ async def get_model(
     
     provider_status = check_available_providers()
     model_data = convert_surreal_record(model)
+    # Add default values for missing required fields
+    if "created" not in model_data:
+        model_data["created"] = datetime.utcnow()
+    if "updated" not in model_data:
+        model_data["updated"] = datetime.utcnow()
     model_data["provider_status"] = provider_status.get(model_data["provider"], False)
     return ModelWithProvider(**model_data)
 
