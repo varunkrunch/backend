@@ -6,10 +6,10 @@ from pydantic import BaseModel, Field, ConfigDict
 from surrealdb import AsyncSurreal
 from ..database import get_db_connection
 
-from open_notebook.domain.transformation import Transformation, DefaultPrompts
-from open_notebook.graphs.transformation import graph as transformation_graph
-from open_notebook.domain.models import model_manager
-from open_notebook.domain.notebook import Source
+from ..open_notebook.domain.transformation import Transformation, DefaultPrompts
+from ..open_notebook.graphs.transformation import graph as transformation_graph
+from ..open_notebook.domain.models import model_manager
+from ..open_notebook.domain.notebook import Source
 
 from ..models import (
     TransformationBase,

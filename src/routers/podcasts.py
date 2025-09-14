@@ -20,10 +20,10 @@ from dateutil import parser
 # Local imports
 from ..database import get_db_connection
 from ..models import StatusResponse
-from open_notebook.domain.models import Model
-from open_notebook.plugins.podcasts import PodcastEpisode, PodcastConfig
+from ..open_notebook.domain.models import Model
+from ..open_notebook.plugins.podcasts import PodcastEpisode, PodcastConfig
 from .models import conversation_styles, dialogue_structures, engagement_techniques, participant_roles
-from open_notebook.domain.notebook import Note, Source
+from ..open_notebook.domain.notebook import Note, Source
 
 # Constants
 DATA_FOLDER = os.getenv("DATA_FOLDER", "./data")

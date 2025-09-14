@@ -10,9 +10,9 @@ from ..database import get_db_connection
 from ..models import (
     Note, NoteCreate, NoteUpdate, NoteSummary, NoteResponse, StatusResponse
 )
-from open_notebook.domain.models import model_manager
-from open_notebook.graphs.prompt import graph as prompt_graph
-from open_notebook.utils import surreal_clean
+from ..open_notebook.domain.models import model_manager
+from ..open_notebook.graphs.prompt import graph as prompt_graph
+from ..open_notebook.utils import surreal_clean
 from langchain_core.runnables import RunnableConfig
 
 # Create a router for note-related endpoints

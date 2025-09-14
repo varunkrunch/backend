@@ -20,8 +20,8 @@ from collections import defaultdict
 from enum import Enum
 
 # Import domain models and services
-from open_notebook.domain.notebook import Notebook, ChatSession as DomainChatSession
-from open_notebook.graphs.chat import graph as chat_graph
+from ..open_notebook.domain.notebook import Notebook, ChatSession as DomainChatSession
+from ..open_notebook.graphs.chat import graph as chat_graph
 from langchain_core.runnables import RunnableConfig
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_openai import ChatOpenAI

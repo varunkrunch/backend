@@ -27,7 +27,7 @@ SURREAL_ADDRESS = os.getenv("SURREAL_ADDRESS", "localhost")
 SURREAL_PORT = int(os.getenv("SURREAL_PORT", "8000"))
 SURREAL_USER = os.getenv("SURREAL_USER", "root")
 SURREAL_PASS = os.getenv("SURREAL_PASS", "root")
-SURREAL_NAMESPACE = os.getenv("SURREAL_NAMESPACE", "open_notebook")
+SURREAL_NAMESPACE = os.getenv("SURREAL_NAMESPACE", "fastapi_backend")
 SURREAL_DATABASE = os.getenv("SURREAL_DATABASE", "staging")
 
 # Use WebSocket URL for SurrealDB

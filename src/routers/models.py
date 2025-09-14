@@ -13,7 +13,7 @@ from ..models import Model, ModelCreate, ModelUpdate, DefaultModels, StatusRespo
 
 # Import from open_notebook domain models for validation
 try:
-    from open_notebook.domain.models import model_manager, Model as DomainModel
+    from ..open_notebook.domain.models import model_manager, Model as DomainModel
     from esperanto import AIFactory
 except ImportError as e:
     print(f"Warning: Could not import open_notebook domain models: {e}")
@@ -553,7 +553,7 @@ async def test_model(
     
     try:
         # Import and test the model
-        from open_notebook.domain.models import model_manager
+        from ..open_notebook.domain.models import model_manager
         
         model_instance = model_manager.get_model(model_id)
         if not model_instance:
@@ -708,7 +708,7 @@ async def update_default_models(
 async def clear_model_cache():
     """Clear the model cache (matching Streamlit logic)"""
     try:
-        from open_notebook.domain.models import model_manager
+        from ..open_notebook.domain.models import model_manager
         model_manager.clear_cache()
         return StatusResponse(
             status="success",

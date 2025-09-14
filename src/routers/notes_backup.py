@@ -10,7 +10,7 @@ from ..database import get_db_connection
 from ..models import (
     Note, NoteCreate, NoteUpdate, NoteSummary, StatusResponse
 )
-from open_notebook.domain.models import model_manager
+from ..open_notebook.domain.models import model_manager
 
 # Create a router for note-related endpoints
 # Notes are often accessed in the context of a notebook, but can also be managed directly by ID

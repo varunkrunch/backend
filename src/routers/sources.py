@@ -23,15 +23,15 @@ from ..models import (
 from .notes import link_note_to_notebook, create_note_embedding
 from pydantic import BaseModel, HttpUrl
 
-from open_notebook.domain.content_settings import ContentSettings
-from open_notebook.domain.transformation import Transformation
-from open_notebook.domain.notebook import Source as DomainSource, Asset
-from open_notebook.domain.models import model_manager
-from open_notebook.config import UPLOADS_FOLDER
+from ..open_notebook.domain.content_settings import ContentSettings
+from ..open_notebook.domain.transformation import Transformation
+from ..open_notebook.domain.notebook import Source as DomainSource, Asset
+from ..open_notebook.domain.models import model_manager
+from ..open_notebook.config import UPLOADS_FOLDER
 
 # LLM-powered source processing
 try:
-    from open_notebook.graphs.source import source_graph
+    from ..open_notebook.graphs.source import source_graph
     SOURCE_GRAPH_AVAILABLE = True
 except ImportError as e:
     source_graph = None
@@ -221,8 +221,8 @@ async def add_source_to_notebook(
         title = source.title or ""
         if not title and source.full_text:
             try:
-                from open_notebook.graphs.prompt import graph as prompt_graph
-                from open_notebook.utils import surreal_clean
+                from ..open_notebook.graphs.prompt import graph as prompt_graph
+                from ..open_notebook.utils import surreal_clean
                 
                 # Generate title based on content type
                 if type == "link" and url:
@@ -387,8 +387,8 @@ async def add_source_to_notebook_by_name(
         title = source.title or ""
         if not title and source.full_text:
             try:
-                from open_notebook.graphs.prompt import graph as prompt_graph
-                from open_notebook.utils import surreal_clean
+                from ..open_notebook.graphs.prompt import graph as prompt_graph
+                from ..open_notebook.utils import surreal_clean
                 
                 # Generate title based on content
                 if type == "link" and url:
@@ -767,7 +767,7 @@ async def get_source(
             source_dict['title'] = source_dict.get('metadata', {}).get('title', 'Untitled Source')
         
         # Create domain source object to get insights properly
-        from open_notebook.domain.notebook import Source as DomainSource, Asset
+        from ..open_notebook.domain.notebook import Source as DomainSource, Asset
         
         asset = None
         if source_dict.get('asset', {}).get('url'):
@@ -1005,7 +1005,7 @@ async def generate_source_title(
         source_dict = convert_record_id_to_string(source_dict)
         
         # Create domain source object
-        from open_notebook.domain.notebook import Source as DomainSource, Asset
+        from ..open_notebook.domain.notebook import Source as DomainSource, Asset
         
         asset = None
         if source_dict.get('asset', {}).get('url'):
@@ -1022,8 +1022,8 @@ async def generate_source_title(
         
         # Generate title using AI
         try:
-            from open_notebook.graphs.prompt import graph as prompt_graph
-            from open_notebook.utils import surreal_clean
+            from ..open_notebook.graphs.prompt import graph as prompt_graph
+            from ..open_notebook.utils import surreal_clean
             
             # Determine content type and generate appropriate prompt
             if source.asset and source.asset.url:
@@ -1256,7 +1256,7 @@ async def run_transformations_on_source_by_title(
             source_id = str(source_id)
         
         # Create domain source object
-        from open_notebook.domain.notebook import Source as DomainSource, Asset
+        from ..open_notebook.domain.notebook import Source as DomainSource, Asset
         
         asset = None
         if source_dict.get('asset', {}).get('url'):
@@ -1292,7 +1292,7 @@ async def run_transformations_on_source_by_title(
         
         # Import the transformation graph
         try:
-            from open_notebook.graphs.transformation import graph as transform_graph
+            from ..open_notebook.graphs.transformation import graph as transform_graph
         except ImportError as e:
             raise HTTPException(
                 status_code=500,
@@ -1419,7 +1419,7 @@ async def run_transformations_on_source_by_id(
         source_dict['notebook_id'] = str(source_dict.get('notebook_id', ''))
         
         # Create domain source object
-        from open_notebook.domain.notebook import Source as DomainSource, Asset
+        from ..open_notebook.domain.notebook import Source as DomainSource, Asset
         
         asset = None
         if source_dict.get('asset', {}).get('url'):
@@ -1455,7 +1455,7 @@ async def run_transformations_on_source_by_id(
         
         # Import the transformation graph
         try:
-            from open_notebook.graphs.transformation import graph as transform_graph
+            from ..open_notebook.graphs.transformation import graph as transform_graph
         except ImportError as e:
             raise HTTPException(
                 status_code=500,
