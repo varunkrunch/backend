@@ -39,9 +39,6 @@ pip install -r requirements-backend.txt
 
 echo "✅ All dependencies installed successfully!"
 echo ""
-echo "🔧 Initializing default models..."
-python init_models.py
-echo ""
 echo "🎉 FastAPI Backend is ready to run!"
 echo ""
 echo "To start the server:"
@@ -49,8 +46,3 @@ echo "  python run.py"
 echo ""
 echo "To access the API documentation:"
 echo "  http://localhost:8000/docs"
-echo ""
-echo "⚠️  Make sure to set up your .env file with API keys:"
-echo "  OPENAI_API_KEY=your_key_here"
-echo "  ANTHROPIC_API_KEY=your_key_here"
-echo "  GROQ_API_KEY=your_key_here"

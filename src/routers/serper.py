@@ -1,4 +1,4 @@
-# /home/ubuntu/open_notebook_full_backend/fastapi_backend/src/routers/serper.py
+# FastAPI Backend Serper Router
 
 from fastapi import APIRouter, HTTPException, status, Query
 from enum import Enum

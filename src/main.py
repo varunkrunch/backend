@@ -1,4 +1,4 @@
-# /home/ubuntu/open_notebook_full_backend/fastapi_backend/src/main.py
+# FastAPI Backend Main Application
 from dotenv import load_dotenv
 load_dotenv()
 from fastapi import FastAPI, Depends, HTTPException, Request

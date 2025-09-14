@@ -1,4 +1,4 @@
-# /home/ubuntu/open_notebook_full_backend/fastapi_backend/src/database.py
+# FastAPI Backend Database Configuration
 
 import os
 from typing import Optional

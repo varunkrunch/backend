@@ -1,4 +1,4 @@
-# /home/ubuntu/open_notebook_full_backend/fastapi_backend/src/routers/search.py
+# FastAPI Backend Search Router
 
 from fastapi import (
     APIRouter, Depends, HTTPException, status, Query, Header

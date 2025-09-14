@@ -8,7 +8,7 @@ This document describes the enhanced models functionality in the Open Notebook F
 
 The models system consists of several key components that mirror the Streamlit implementation:
 
-1. **Domain Models** (`open_notebook/domain/models.py`): Core model definitions and ModelManager singleton
+1. **Domain Models** (`src/open_notebook/domain/models.py`): Core model definitions and ModelManager singleton
 2. **FastAPI Models** (`fastapi_backend/src/models.py`): Pydantic models that exactly match the domain model structure
 3. **Models Router** (`fastapi_backend/src/routers/models.py`): REST API endpoints that mirror Streamlit functionality
 4. **AI Integration** (`fastapi_backend/src/routers/ai_interactions.py`): AI endpoints that use the model manager
@@ -214,7 +214,7 @@ GET /api/v1/models/defaults
 **Response:**
 ```json
 {
-  "id": "open_notebook:default_models",
+  "id": "fastapi_backend:default_models",
   "default_chat_model": "model:123",
   "default_transformation_model": "model:124",
   "large_context_model": "model:125",
@@ -289,7 +289,7 @@ DEFINE EVENT model_provider_validation ON TABLE model WHEN ($after != NONE) THEN
 
 ### Default Models Record
 
-The default models are stored as a single record with ID `open_notebook:default_models`.
+The default models are stored as a single record with ID `fastapi_backend:default_models`.
 
 ## AI Integration
 

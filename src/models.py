@@ -1,4 +1,4 @@
-# /home/ubuntu/open_notebook_full_backend/fastapi_backend/src/models.py
+# FastAPI Backend Pydantic Models
 
 from pydantic import BaseModel, Field, ConfigDict, validator
 from typing import Optional, List, Dict, Any, Literal, Union

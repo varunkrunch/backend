@@ -25,9 +25,7 @@ def call_model_with_messages(state: ThreadState, config: RunnableConfig) -> dict
         print(f"[DEBUG] call_model_with_messages state: {state}")
         
         # Generate system prompt
-        import os
-        prompt_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "..", "prompts")
-        system_prompt = Prompter(prompt_template="chat", prompt_dir=prompt_dir).render(data=state)
+        system_prompt = Prompter(prompt_template="chat", prompt_dir="/Users/varun/open-notebook/prompts").render(data=state)
         
         # Prepare messages for the model
         messages = state.get("messages", [])

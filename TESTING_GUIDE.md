@@ -65,7 +65,7 @@ SURREAL_ADDRESS=localhost
 SURREAL_PORT=8000
 SURREAL_USER=root
 SURREAL_PASS=root
-SURREAL_NAMESPACE=open_notebook
+SURREAL_NAMESPACE=fastapi_backend
 SURREAL_DATABASE=main
 
 # FastAPI Configuration
