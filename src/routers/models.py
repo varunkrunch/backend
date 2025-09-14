@@ -114,7 +114,7 @@ router = APIRouter(
 )
 
 MODEL_TABLE = "model"
-DEFAULT_MODELS_RECORD = "open_notebook:default_models"
+DEFAULT_MODELS_RECORD = "fastapi_backend:default_models"
 
 # --- Models for API ---
 class ProviderStatus(BaseModel):

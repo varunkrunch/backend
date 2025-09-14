@@ -29,7 +29,7 @@ class Model(ObjectModel):
 
 
 class DefaultModels(RecordModel):
-    record_id: ClassVar[str] = "open_notebook:default_models"
+    record_id: ClassVar[str] = "fastapi_backend:default_models"
     default_chat_model: Optional[str] = None
     default_transformation_model: Optional[str] = None
     large_context_model: Optional[str] = None

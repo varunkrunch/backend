@@ -6,7 +6,7 @@ from .base import RecordModel
 
 
 class ContentSettings(RecordModel):
-    record_id: ClassVar[str] = "open_notebook:content_settings"
+    record_id: ClassVar[str] = "fastapi_backend:content_settings"
     default_content_processing_engine_doc: Optional[
         Literal["auto", "docling", "simple"]
     ] = Field("auto", description="Default Content Processing Engine for Documents")

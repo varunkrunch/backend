@@ -26,7 +26,7 @@ class Transformation(ObjectModel):
 
 
 class DefaultPrompts(RecordModel):
-    record_id: ClassVar[str] = "open_notebook:default_prompts"
+    record_id: ClassVar[str] = "fastapi_backend:default_prompts"
     transformation_instructions: Optional[str] = Field(
         None, description="Instructions for executing a transformation"
     )
