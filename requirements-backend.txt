@@ -1,4 +1,4 @@
-# FastAPI Backend Requirements
+# FastAPI Backend Requirements - FIXED VERSION
 # Core FastAPI and web server
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
@@ -70,5 +70,11 @@ packaging>=23.0
 nest-asyncio>=1.6.0
 typing-extensions>=4.0.0
 
-# Data processing
-numpy<2.0.0
+# Data processing - FIXED NUMPY VERSION
+numpy>=1.22.4,<2.0.0
+pandas>=1.5.0
+scipy>=1.9.0
+
+# Additional missing packages
+docling>=1.0.0
+docling-core>=1.0.0

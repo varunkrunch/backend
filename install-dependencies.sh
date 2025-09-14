@@ -29,6 +29,10 @@ pip install git+https://github.com/lfnovo/surreal-lite-py.git
 echo "Installing podcastfy..."
 pip install git+https://github.com/lfnovo/podcastfy.git
 
+# Fix NumPy compatibility issues first
+echo "🔧 Fixing NumPy compatibility..."
+pip install "numpy>=1.22.4,<2.0.0" --force-reinstall
+
 # Install main requirements
 echo "📦 Installing main requirements..."
 pip install -r requirements-backend.txt
