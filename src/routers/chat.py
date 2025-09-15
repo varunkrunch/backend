@@ -626,8 +626,8 @@ async def get_chat_history(
             # Get all sessions for notebook
             sessions_query = """
                 SELECT chat_session.* FROM chat_session 
-                INNER JOIN refers_to ON chat_session.id = refers_to.in 
-                WHERE refers_to.out = $notebook_id
+                INNER JOIN `refers_to` ON chat_session.id = `refers_to`.in 
+                WHERE `refers_to`.out = $notebook_id
                 ORDER BY chat_session.updated DESC
             """
             sessions_result = await db.query(sessions_query, {"notebook_id": notebook_id})

@@ -162,8 +162,13 @@ async def add_source_to_notebook(
             raise HTTPException(status_code=400, detail="Content must be provided for text type.")
         req["content"] = content
     elif type == "link":
-        if not url:
+        if not url or url.strip() == "":
             raise HTTPException(status_code=400, detail="URL must be provided for link type.")
+        if url == "string" or url.startswith("string"):
+            raise HTTPException(status_code=400, detail="Please provide a real URL, not the placeholder 'string'")
+        if not url.startswith(("http://", "https://")):
+            raise HTTPException(status_code=400, detail="Please provide a valid URL starting with http:// or https://")
+        # Don't include content for link type
         req["url"] = url
     elif type == "upload":
         if not file:
@@ -216,6 +221,18 @@ async def add_source_to_notebook(
         source = result.get("source")
         if not source:
             raise HTTPException(status_code=500, detail="Source creation failed.")
+        
+        # Check if the source processing failed due to invalid URL
+        if source.full_text and ("could not be resolved" in source.full_text or "ParamValidationError" in source.full_text):
+            # Delete the failed source
+            try:
+                source.delete()
+            except:
+                pass
+            raise HTTPException(
+                status_code=400, 
+                detail="Failed to process URL. Please check that the URL is valid and accessible."
+            )
         
         # Generate title if not present (enhanced logic from Streamlit)
         title = source.title or ""

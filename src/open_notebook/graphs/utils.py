@@ -27,6 +27,42 @@ def provision_langchain_model(
     else:
         model = model_manager.get_default_model(default_type, **kwargs)
 
+    # If no model is configured, try to get any available language model as fallback
+    if model is None:
+        logger.warning(f"No default {default_type} model configured, trying to find any available language model")
+        try:
+            # Try to get the first available language model as fallback
+            # This is a temporary fix until proper default model configuration is set up
+            from ..domain.models import Model
+            from esperanto import AIFactory
+            
+            # Get all language models from the database
+            available_models = Model.select().where(Model.type == "language").limit(1)
+            if available_models:
+                fallback_model = available_models[0]
+                logger.info(f"Using fallback model: {fallback_model.name} ({fallback_model.provider})")
+                model = AIFactory.create_language(
+                    model_name=fallback_model.name,
+                    provider=fallback_model.provider,
+                    config=kwargs,
+                )
+            else:
+                # Last resort: create a basic OpenAI model
+                logger.warning("No models found in database, creating fallback OpenAI model")
+                model = AIFactory.create_language(
+                    model_name="gpt-3.5-turbo",
+                    provider="openai",
+                    config=kwargs,
+                )
+        except Exception as e:
+            logger.error(f"Failed to create fallback model: {e}")
+            # Create a basic OpenAI model as last resort
+            model = AIFactory.create_language(
+                model_name="gpt-3.5-turbo",
+                provider="openai",
+                config=kwargs,
+            )
+
     logger.debug(f"Using model: {model}")
     assert isinstance(model, LanguageModel), f"Model is not a LanguageModel: {model}"
     return model.to_langchain()
