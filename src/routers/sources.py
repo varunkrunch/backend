@@ -207,7 +207,8 @@ async def add_source_to_notebook(
                 if t.name in apply_transformations:
                     transformations.append(t)
     else:
-        transformations = [t for t in Transformation.get_all() if getattr(t, "apply_default", False)]
+        # No automatic default transformations - user must explicitly request them
+        transformations = []
 
     state = {
         "content_state": req,
@@ -385,7 +386,8 @@ async def add_source_to_notebook_by_name(
                 if t.name in apply_transformations:
                     transformations.append(t)
     else:
-        transformations = [t for t in Transformation.get_all() if getattr(t, "apply_default", False)]
+        # No automatic default transformations - user must explicitly request them
+        transformations = []
 
     state = {
         "content_state": req,

@@ -223,7 +223,11 @@ class ObjectModel(BaseModel):
                     if isinstance(getattr(self, key), BaseModel):
                         setattr(self, key, type(getattr(self, key))(**value))
                     else:
-                        setattr(self, key, value)
+                        # Convert RecordID objects to strings
+                        if hasattr(value, 'table_name') and hasattr(value, 'record_id'):
+                            setattr(self, key, f"{value.table_name}:{value.record_id}")
+                        else:
+                            setattr(self, key, value)
 
         except ValidationError as e:
             logger.error(f"Validation failed: {e}")
