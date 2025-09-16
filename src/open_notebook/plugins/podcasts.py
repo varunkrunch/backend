@@ -178,7 +178,13 @@ class PodcastConfig(ObjectModel):
                 episode.save()
 
                 # Use the episode ID (without table prefix) for renaming
-                episode_id = episode.id.split(":")[-1] if ":" in str(episode.id) else str(episode.id)
+                # Handle both string IDs and RecordID objects
+                if hasattr(episode.id, 'table_name') and hasattr(episode.id, 'record_id'):
+                    # It's a RecordID object
+                    episode_id = episode.id.record_id
+                else:
+                    # It's a string ID
+                    episode_id = episode.id.split(":")[-1] if ":" in str(episode.id) else str(episode.id)
                 new_audio_filename = f"podcast_{episode_id}.mp3"
                 new_audio_file = os.path.join(DATA_FOLDER, "podcasts", "audio", new_audio_filename)
                 new_audio_url = f"/data/podcasts/audio/{new_audio_filename}"
