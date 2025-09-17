@@ -221,13 +221,13 @@ class ObjectModel(BaseModel):
             for key, value in repo_result[0].items():
                 if hasattr(self, key):
                     if isinstance(getattr(self, key), BaseModel):
-                        setattr(self, key, type(getattr(self, key))(**value))
+                        object.__setattr__(self, key, type(getattr(self, key))(**value))
                     else:
                         # Convert RecordID objects to strings
                         if hasattr(value, 'table_name') and hasattr(value, 'record_id'):
-                            setattr(self, key, f"{value.table_name}:{value.record_id}")
+                            object.__setattr__(self, key, f"{value.table_name}:{value.record_id}")
                         else:
-                            setattr(self, key, value)
+                            object.__setattr__(self, key, value)
 
         except ValidationError as e:
             logger.error(f"Validation failed: {e}")
