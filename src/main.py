@@ -61,6 +61,11 @@ app.include_router(chat.router)
 app.include_router(serper.router)
 
 
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "message": "Backend is running"}
+
 # Simple root endpoint for health check / info
 @app.get("/")
 async def read_root():
