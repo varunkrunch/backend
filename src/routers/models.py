@@ -113,12 +113,6 @@ router = APIRouter(
     tags=["Models"],
 )
 
-# Add a redirect endpoint for frontend compatibility
-@router.get("", response_model=List[ModelWithProvider])
-async def get_models_redirect(db: AsyncSurreal = Depends(get_db_connection)):
-    """Redirect endpoint for frontend compatibility - calls the main models endpoint"""
-    return await list_models(db=db)
-
 MODEL_TABLE = "model"
 DEFAULT_MODELS_RECORD = "open_notebook:default_models"
 
@@ -443,6 +437,12 @@ async def list_models(
         models.append(ModelWithProvider(**model_data))
     
     return models
+
+# Add a redirect endpoint for frontend compatibility
+@router.get("", response_model=List[ModelWithProvider])
+async def get_models_redirect(db: AsyncSurreal = Depends(get_db_connection)):
+    """Redirect endpoint for frontend compatibility - calls the main models endpoint"""
+    return await list_models(db=db)
 
 @router.get("/models/by-type/{model_type}", response_model=ModelListResponse)
 async def list_models_by_type(
