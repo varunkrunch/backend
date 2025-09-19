@@ -218,16 +218,17 @@ class ObjectModel(BaseModel):
                 repo_result = repo_update(self.id, data)
 
             # Update the current instance with the result
-            for key, value in repo_result[0].items():
+            result_data = repo_result[0]
+            
+            # Convert the entire result to handle RecordID objects
+            converted_result = self._convert_surreal_types(result_data)
+            
+            for key, value in converted_result.items():
                 if hasattr(self, key):
                     if isinstance(getattr(self, key), BaseModel):
                         object.__setattr__(self, key, type(getattr(self, key))(**value))
                     else:
-                        # Convert RecordID objects to strings
-                        if hasattr(value, 'table_name') and hasattr(value, 'record_id'):
-                            object.__setattr__(self, key, f"{value.table_name}:{value.record_id}")
-                        else:
-                            object.__setattr__(self, key, value)
+                        object.__setattr__(self, key, value)
 
         except ValidationError as e:
             logger.error(f"Validation failed: {e}")
