@@ -269,87 +269,11 @@ class ModelManager:
                     print(f"  - _model_name: {getattr(model_instance, '_model_name', 'NOT SET')}")
                     print(f"  - Note: TheAlpha API doesn't support embeddings")
             elif model.type == "text_to_speech":
-                # Create a wrapper that inherits from TextToSpeechModel
-                class TheAlphaTextToSpeechModel(TextToSpeechModel):
-                    def __init__(self, model_name, api_key, base_url, **kwargs):
-                        super().__init__()
-                        self._model_name = model_name
-                        self._api_key = api_key
-                        self._base_url = base_url
-                        self._kwargs = kwargs
-                    
-                    def _get_default_model(self):
-                        return self._model_name
-                    
-                    def agenerate_speech(self, *args, **kwargs):
-                        # Thealpha doesn't support TTS, return empty audio
-                        return b""
-                    
-                    def available_voices(self, *args, **kwargs):
-                        # Thealpha doesn't support TTS, return empty list
-                        return []
-                    
-                    def generate_speech(self, *args, **kwargs):
-                        # Thealpha doesn't support TTS, return empty audio
-                        return b""
-                    
-                    @property
-                    def models(self):
-                        return [self._model_name]
-                    
-                    @property
-                    def provider(self):
-                        return "thealpha"
-                    
-                    def to_langchain(self):
-                        # Return a simple object for now
-                        return type('LangChainTTS', (), {})()
-                
-                model_instance = TheAlphaTextToSpeechModel(
-                    model_name=model.name,
-                    api_key=thealpha_api_key,
-                    base_url=thealpha_base_url,
-                    **kwargs
-                )
+                # TheAlpha doesn't support TTS models - raise an error instead of creating a placeholder
+                raise ValueError(f"TheAlpha provider doesn't support TTS models. Please use a different provider for text-to-speech functionality.")
             elif model.type == "speech_to_text":
-                # Create a wrapper that inherits from SpeechToTextModel
-                class TheAlphaSpeechToTextModel(SpeechToTextModel):
-                    def __init__(self, model_name, api_key, base_url, **kwargs):
-                        super().__init__()
-                        self._model_name = model_name
-                        self._api_key = api_key
-                        self._base_url = base_url
-                        self._kwargs = kwargs
-                    
-                    def _get_default_model(self):
-                        return self._model_name
-                    
-                    def atranscribe(self, *args, **kwargs):
-                        # Thealpha doesn't support STT, return empty text
-                        return ""
-                    
-                    def transcribe(self, *args, **kwargs):
-                        # Thealpha doesn't support STT, return empty text
-                        return ""
-                    
-                    @property
-                    def models(self):
-                        return [self._model_name]
-                    
-                    @property
-                    def provider(self):
-                        return "thealpha"
-                    
-                    def to_langchain(self):
-                        # Return a simple object for now
-                        return type('LangChainSTT', (), {})()
-                
-                model_instance = TheAlphaSpeechToTextModel(
-                    model_name=model.name,
-                    api_key=thealpha_api_key,
-                    base_url=thealpha_base_url,
-                    **kwargs
-                )
+                # TheAlpha doesn't support STT models - raise an error instead of creating a placeholder
+                raise ValueError(f"TheAlpha provider doesn't support STT models. Please use a different provider for speech-to-text functionality.")
             else:
                 raise ValueError(f"Unsupported model type for thealpha: {model.type}")
         else:

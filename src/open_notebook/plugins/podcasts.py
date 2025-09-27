@@ -132,16 +132,42 @@ class PodcastConfig(ObjectModel):
                 api_key_label = "GOOGLE_API_KEY"
                 llm_model_name = self.transcript_model
 
-        if self.provider == "google":
-            tts_model = "gemini"
-        elif self.provider == "openai":
-            tts_model = "openai"
-        elif self.provider == "anthropic":
-            tts_model = "anthropic"
-        elif self.provider == "vertexai":
-            tts_model = "geminimulti"
-        elif self.provider == "elevenlabs":
-            tts_model = "elevenlabs"
+        # Use the default TTS model from Models page configuration
+        # This respects user's TTS model selection instead of hardcoded mappings
+        from open_notebook.domain.models import model_manager
+        try:
+            default_tts_model = model_manager.text_to_speech
+            if default_tts_model:
+                tts_model = f"{default_tts_model.provider}/{default_tts_model.models[0] if hasattr(default_tts_model, 'models') and default_tts_model.models else 'default'}"
+            else:
+                # Fallback to provider-based mapping if no default TTS model is set
+                if self.provider == "google":
+                    tts_model = "gemini"
+                elif self.provider == "openai":
+                    tts_model = "openai"
+                elif self.provider == "anthropic":
+                    tts_model = "anthropic"
+                elif self.provider == "vertexai":
+                    tts_model = "geminimulti"
+                elif self.provider == "elevenlabs":
+                    tts_model = "elevenlabs"
+                else:
+                    tts_model = "openai"  # Ultimate fallback
+        except Exception as e:
+            logger.warning(f"Failed to get default TTS model from Models page: {e}")
+            # Fallback to provider-based mapping
+            if self.provider == "google":
+                tts_model = "gemini"
+            elif self.provider == "openai":
+                tts_model = "openai"
+            elif self.provider == "anthropic":
+                tts_model = "anthropic"
+            elif self.provider == "vertexai":
+                tts_model = "geminimulti"
+            elif self.provider == "elevenlabs":
+                tts_model = "elevenlabs"
+            else:
+                tts_model = "openai"  # Ultimate fallback
 
         logger.info(
             f"Generating episode {episode_name} with config {conversation_config} and using model {llm_model_name}, tts model {tts_model}"

@@ -151,3 +151,4 @@ If you want to copy your current configuration:
 - **Defaults**: Must be set and saved for each model type
 - **Database**: Starts empty, populated by user actions
 - **No Migration**: Fresh install starts with clean slate
+
