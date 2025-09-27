@@ -66,6 +66,13 @@ app.include_router(serper.router)
 async def health_check():
     return {"status": "healthy", "message": "Backend is running"}
 
+# Frontend compatibility redirects
+@app.get("/api/v1/config/defaults")
+async def config_defaults_redirect():
+    """Redirect endpoint for frontend compatibility"""
+    from .routers.models import get_default_models_config
+    return await get_default_models_config()
+
 # Simple root endpoint for health check / info
 @app.get("/")
 async def read_root():

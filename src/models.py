@@ -261,7 +261,7 @@ class ModelBase(BaseModel):
         supported_providers = [
             "openai", "anthropic", "groq", "xai", "vertexai", "vertexai-anthropic",
             "gemini", "openrouter", "elevenlabs", "ollama", "azure", "mistral",
-            "voyage", "deepseek", "litellm"
+            "voyage", "deepseek", "litellm", "thealpha"
         ]
         if v not in supported_providers:
             raise ValueError(f"Unsupported provider: {v}. Supported providers: {supported_providers}")
@@ -305,7 +305,7 @@ class ModelUpdate(BaseModel):
         supported_providers = [
             "openai", "anthropic", "groq", "xai", "vertexai", "vertexai-anthropic",
             "gemini", "openrouter", "elevenlabs", "ollama", "azure", "mistral",
-            "voyage", "deepseek", "litellm"
+            "voyage", "deepseek", "litellm", "thealpha"
         ]
         if v not in supported_providers:
             raise ValueError(f"Unsupported provider: {v}. Supported providers: {supported_providers}")

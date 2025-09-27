@@ -194,14 +194,15 @@ class ObjectModel(BaseModel):
             if self.needs_embedding():
                 embedding_content = self.get_embedding_content()
                 if embedding_content:
-                    EMBEDDING_MODEL = model_manager.embedding_model
-                    if not EMBEDDING_MODEL:
+                    # Get the current embedding model (don't cache it globally)
+                    current_embedding_model = model_manager.embedding_model
+                    if not current_embedding_model:
                         logger.warning(
                             "No embedding model found. Content will not be searchable."
                         )
                     data["embedding"] = (
-                        EMBEDDING_MODEL.embed([embedding_content])[0]
-                        if EMBEDDING_MODEL
+                        current_embedding_model.embed([embedding_content])[0]
+                        if current_embedding_model
                         else []
                     )
 

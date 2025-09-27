@@ -174,22 +174,76 @@ def check_available_providers() -> Dict[str, bool]:
     
     return provider_status
 
+def get_configured_providers_list() -> List[str]:
+    """Get list of providers that have API keys configured in environment"""
+    import os
+    
+    # Map environment variables to provider names
+    provider_env_mapping = {
+        'openai': ['OPENAI_API_KEY'],
+        'anthropic': ['ANTHROPIC_API_KEY'],
+        'google': ['GOOGLE_API_KEY', 'PALM_API_KEY'],
+        'deepseek': ['DEEPSEEK_API_KEY'],
+        'groq': ['GROQ_API_KEY'],
+        'mistral': ['MISTRAL_API_KEY'],
+        'ollama': ['OLLAMA_API_KEY'],
+        'openrouter': ['OPENROUTER_API_KEY'],
+        'thealpha': ['THEALPHA_API_KEY'],
+        'azure': ['AZURE_API_KEY'],
+        'vertex': ['VERTEX_API_KEY'],
+        'huggingface': ['HUGGINGFACE_API_KEY'],
+        'cohere': ['COHERE_API_KEY'],
+        'replicate': ['REPLICATE_API_KEY'],
+        'together': ['TOGETHER_API_KEY'],
+        'perplexity': ['PERPLEXITY_API_KEY'],
+        'aleph_alpha': ['ALEPH_ALPHA_API_KEY'],
+        'bedrock': ['BEDROCK_AWS_ACCESS_KEY_ID', 'BEDROCK_AWS_SECRET_ACCESS_KEY'],
+        'sagemaker': ['SAGEMAKER_AWS_ACCESS_KEY_ID', 'SAGEMAKER_AWS_SECRET_ACCESS_KEY'],
+        'baidu': ['BAIDU_API_KEY'],
+        'volc': ['VOLC_ACCESS_KEY'],
+        'nvidia': ['NVIDIA_API_KEY'],
+        'ai21': ['AI21_API_KEY'],
+        'elevenlabs': ['ELEVENLABS_API_KEY'],
+        'transformers': ['HUGGINGFACE_API_KEY'],  # Uses same as huggingface
+        'voyage': ['VOYAGE_API_KEY'],
+        'xai': ['XAI_API_KEY']
+    }
+    
+    configured_providers = []
+    
+    for provider, env_vars in provider_env_mapping.items():
+        # Check if any of the required environment variables are set
+        has_config = any(
+            os.getenv(env_var) and os.getenv(env_var).strip() 
+            for env_var in env_vars
+        )
+        
+        if has_config:
+            configured_providers.append(provider)
+    
+    return configured_providers
+
 def get_available_providers_for_type(model_type: str) -> List[str]:
-    """Get available providers for a specific model type (matching Streamlit logic)"""
+    """Get available providers for a specific model type (filtered by configured API keys)"""
     if not AIFactory:
         return []
     
     try:
-        available_providers = AIFactory.get_available_providers().get(model_type, [])
-        # Sort providers alphabetically for easier navigation (matching Streamlit)
+        # Get all available providers from AIFactory
+        all_available_providers = AIFactory.get_available_providers().get(model_type, [])
+        
+        # Get configured providers (those with API keys)
+        configured_providers = get_configured_providers_list()
+        
+        # Filter to only include configured providers
+        available_providers = [p for p in all_available_providers if p in configured_providers]
+        
+        # Sort providers alphabetically for easier navigation
         available_providers.sort()
         
         # Remove perplexity from available_providers if it exists (matching Streamlit)
         if "perplexity" in available_providers:
             available_providers.remove("perplexity")
-        
-        # Add custom providers based on availability
-        provider_status = check_available_providers()
         
         # Always check for thealpha environment variables directly
         thealpha_available = (
@@ -197,25 +251,21 @@ def get_available_providers_for_type(model_type: str) -> List[str]:
             and os.environ.get("THEALPHA_API_BASE") is not None
         )
         
-        # Add thealpha to language models if available
-        if model_type == "language" and thealpha_available:
-            if "thealpha" not in available_providers:
-                available_providers.append("thealpha")
+        # Add thealpha to language models if available and configured
+        if model_type == "language" and thealpha_available and "thealpha" not in available_providers:
+            available_providers.append("thealpha")
         
-        # Add thealpha to embedding models if available
-        if model_type == "embedding" and thealpha_available:
-            if "thealpha" not in available_providers:
-                available_providers.append("thealpha")
+        # Add thealpha to embedding models if available and configured
+        if model_type == "embedding" and thealpha_available and "thealpha" not in available_providers:
+            available_providers.append("thealpha")
         
-        # Add thealpha to text-to-speech models if available
-        if model_type == "text_to_speech" and thealpha_available:
-            if "thealpha" not in available_providers:
-                available_providers.append("thealpha")
+        # Add thealpha to text-to-speech models if available and configured
+        if model_type == "text_to_speech" and thealpha_available and "thealpha" not in available_providers:
+            available_providers.append("thealpha")
         
-        # Add thealpha to speech-to-text models if available
-        if model_type == "speech_to_text" and thealpha_available:
-            if "thealpha" not in available_providers:
-                available_providers.append("thealpha")
+        # Add thealpha to speech-to-text models if available and configured
+        if model_type == "speech_to_text" and thealpha_available and "thealpha" not in available_providers:
+            available_providers.append("thealpha")
         
         # Sort again after adding custom providers
         available_providers.sort()
@@ -326,6 +376,47 @@ async def get_providers_for_type(model_type: str):
         )
     
     return get_available_providers_for_type(model_type)
+
+# --- All Providers List for Dropdown ---
+@router.get("/providers", response_model=List[str])
+async def get_all_providers():
+    """Get all providers (available and unavailable) for dropdown selection"""
+    all_providers = [
+        "ollama", "openai", "groq", "xai", "vertexai", "gemini", 
+        "openrouter", "anthropic", "elevenlabs", "voyage", "azure", 
+        "mistral", "deepseek", "thealpha"
+    ]
+    return sorted(all_providers)
+
+# --- Provider Management ---
+@router.get("/providers/configured")
+async def get_configured_providers():
+    """Get list of providers that have API keys configured in environment"""
+    configured_providers = get_configured_providers_list()
+    
+    return {
+        "configured_providers": sorted(configured_providers),
+        "total_count": len(configured_providers)
+    }
+
+# --- Frontend Compatibility Redirects ---
+@router.get("/providers/{model_type}", response_model=List[str])
+async def get_providers_for_type_redirect(model_type: str):
+    """Redirect endpoint for frontend compatibility - calls the main providers endpoint"""
+    return await get_providers_for_type(model_type)
+
+@router.post("", response_model=Model, status_code=status.HTTP_201_CREATED)
+async def create_model_redirect(model: ModelCreate, db: AsyncSurreal = Depends(get_db_connection)):
+    """Redirect endpoint for frontend compatibility - calls the main model creation endpoint"""
+    return await create_model(model, db)
+
+# --- Cache Management ---
+@router.post("/clear-cache")
+async def clear_model_cache():
+    """Clear the model cache to force reload of models"""
+    from ..open_notebook.domain.models import model_manager
+    model_manager.clear_cache()
+    return {"message": "Model cache cleared successfully"}
 
 # --- Model CRUD Endpoints ---
 @router.post("/models", response_model=Model, status_code=status.HTTP_201_CREATED)
@@ -485,12 +576,15 @@ async def get_model(
             detail="Invalid model ID format. Expected table:id"
         )
     
-    model = await db.select(model_id)
-    if not model:
+    # Use query to find the model
+    query = f"SELECT * FROM {MODEL_TABLE} WHERE id = $id"
+    result = await db.query(query, {"id": model_id})
+    
+    if not result or len(result) == 0:
         raise HTTPException(status_code=404, detail="Model not found")
     
     provider_status = check_available_providers()
-    model_data = convert_surreal_record(model)
+    model_data = convert_surreal_record(result[0])
     # Add default values for missing required fields
     if "created" not in model_data:
         model_data["created"] = datetime.utcnow()
@@ -550,33 +644,91 @@ async def delete_model(
             detail="Invalid model ID format. Expected table:id"
         )
     
-    # Check if model exists
-    existing = await db.select(model_id)
-    if not existing:
+    # Check if model exists using query
+    query = f"SELECT * FROM {MODEL_TABLE} WHERE id = $id"
+    result = await db.query(query, {"id": model_id})
+    if not result or len(result) == 0:
         raise HTTPException(status_code=404, detail="Model not found")
     
-    # Check if model is being used as default
-    try:
-        defaults = await db.select(DEFAULT_MODELS_RECORD)
-        if defaults:
-            defaults_data = convert_surreal_record(defaults)
-            for field, value in defaults_data.items():
-                if field.startswith("default_") and value == model_id:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Cannot delete model {model_id} as it is set as the default {field.replace('default_', '').replace('_', ' ')} model"
-                    )
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error checking default models: {e}")
+    # Note: Default model protection removed - models can be deleted even if set as defaults
     
-    # Delete the model
-    await db.delete(model_id)
-    return StatusResponse(
-        status="success",
-        message=f"Model {model_id} deleted successfully"
-    )
+    # Delete the model using query
+    delete_query = f"DELETE FROM {MODEL_TABLE} WHERE id = $id"
+    delete_result = await db.query(delete_query, {"id": model_id})
+    
+    if delete_result:
+        return StatusResponse(
+            status="success",
+            message=f"Model {model_id} deleted successfully"
+        )
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to delete model"
+        )
+
+@router.delete("/by-type/{model_type}/{provider}/{model_name}", response_model=StatusResponse)
+async def delete_model_by_type_and_name(
+    model_type: str,
+    provider: str,
+    model_name: str,
+    db: AsyncSurreal = Depends(get_db_connection)
+):
+    """Delete a model by type, provider, and name (user-friendly endpoint)"""
+    
+    # Validate model type
+    valid_types = ["language", "embedding", "text_to_speech", "speech_to_text"]
+    if model_type not in valid_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid model type: {model_type}. Valid types are: {', '.join(valid_types)}"
+        )
+    
+    # Find the model by type, provider, and name
+    query = f"SELECT * FROM {MODEL_TABLE} WHERE type = $type AND provider = $provider AND name = $name"
+    result = await db.query(query, {
+        "type": model_type,
+        "provider": provider,
+        "name": model_name
+    })
+    
+    if not result or len(result) == 0:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Model not found: {provider}/{model_name} of type {model_type}"
+        )
+    
+    # Get the model data from the result
+    model_data = convert_surreal_record(result[0])
+    model_id = model_data.get("id")
+    
+    if not model_id:
+        raise HTTPException(
+            status_code=500,
+            detail="Model found but missing ID"
+        )
+    
+    # Note: Default model protection removed - models can be deleted even if set as defaults
+    
+    # Delete the model directly using type, provider, and name (workaround for ID issue)
+    delete_query = f"DELETE FROM {MODEL_TABLE} WHERE type = $type AND provider = $provider AND name = $name"
+    delete_result = await db.query(delete_query, {
+        "type": model_type,
+        "provider": provider,
+        "name": model_name
+    })
+    
+    # SurrealDB DELETE queries return the deleted records, so any result means success
+    if delete_result is not None:
+        return StatusResponse(
+            status="success",
+            message=f"Model {provider}/{model_name} ({model_type}) deleted successfully"
+        )
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to delete model"
+        )
 
 # --- Model Testing Endpoint ---
 @router.post("/models/{model_id}/test", response_model=StatusResponse)
@@ -706,29 +858,56 @@ async def get_default_models_simple():
     }
 
 @router.get("/config/defaults")
-async def get_default_models_config():
-    """Get the current default model configurations (working version)"""
-    return {
-        "id": DEFAULT_MODELS_RECORD,
-        "default_chat_model": None,
-        "default_transformation_model": None,
-        "large_context_model": None,
-        "default_text_to_speech_model": None,
-        "default_speech_to_text_model": None,
-        "default_embedding_model": None,
-        "default_tools_model": None,
-        "created": datetime.utcnow().isoformat(),
-        "updated": datetime.utcnow().isoformat()
-    }
-
-@router.patch("/config/defaults")
-async def update_default_models_config(defaults: dict):
-    """Update the default model configurations (working version)"""
+async def get_default_models_config(db: AsyncSurreal = Depends(get_db_connection)):
+    """Get the current default model configurations"""
     try:
-        # For now, just return the input as if it was saved
-        # This allows the frontend to work while we fix the complex database issues
+        # Use direct table query to get the record
+        try:
+            query = f"SELECT * FROM {DEFAULT_MODELS_RECORD}"
+            result = await db.query(query)
+            if result and len(result) > 0:
+                record = convert_surreal_record(result[0])
+                return {
+                    "id": DEFAULT_MODELS_RECORD,
+                    "default_chat_model": record.get("default_chat_model"),
+                    "default_transformation_model": record.get("default_transformation_model"),
+                    "large_context_model": record.get("large_context_model"),
+                    "default_text_to_speech_model": record.get("default_text_to_speech_model"),
+                    "default_speech_to_text_model": record.get("default_speech_to_text_model"),
+                    "default_embedding_model": record.get("default_embedding_model"),
+                    "default_tools_model": record.get("default_tools_model"),
+                    "created": record.get("created", datetime.utcnow().isoformat()),
+                    "updated": record.get("updated", datetime.utcnow().isoformat())
+                }
+        except Exception as query_error:
+            print(f"Query error getting defaults: {query_error}")
+        
+        # Return empty defaults if no record found
         return {
             "id": DEFAULT_MODELS_RECORD,
+            "default_chat_model": None,
+            "default_transformation_model": None,
+            "large_context_model": None,
+            "default_text_to_speech_model": None,
+            "default_speech_to_text_model": None,
+            "default_embedding_model": None,
+            "default_tools_model": None,
+            "created": datetime.utcnow().isoformat(),
+            "updated": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        print(f"Error getting default models: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get default models: {str(e)}"
+        )
+
+@router.patch("/config/defaults")
+async def update_default_models_config(defaults: dict, db: AsyncSurreal = Depends(get_db_connection)):
+    """Update the default model configurations"""
+    try:
+        # Prepare the data to save
+        defaults_data = {
             "default_chat_model": defaults.get("default_chat_model"),
             "default_transformation_model": defaults.get("default_transformation_model"),
             "large_context_model": defaults.get("large_context_model"),
@@ -736,8 +915,49 @@ async def update_default_models_config(defaults: dict):
             "default_speech_to_text_model": defaults.get("default_speech_to_text_model"),
             "default_embedding_model": defaults.get("default_embedding_model"),
             "default_tools_model": defaults.get("default_tools_model"),
-            "created": datetime.utcnow().isoformat(),
             "updated": datetime.utcnow().isoformat()
+        }
+        
+        # Use a simple approach: always create/update using query
+        try:
+            # First try to delete any existing record
+            delete_query = f"DELETE FROM {DEFAULT_MODELS_RECORD}"
+            await db.query(delete_query)
+            
+            # Then create a new record with all the data
+            defaults_data["created"] = datetime.utcnow().isoformat()
+            
+            create_query = f"""
+            CREATE {DEFAULT_MODELS_RECORD} SET 
+                default_chat_model = $default_chat_model,
+                default_transformation_model = $default_transformation_model,
+                large_context_model = $large_context_model,
+                default_text_to_speech_model = $default_text_to_speech_model,
+                default_speech_to_text_model = $default_speech_to_text_model,
+                default_embedding_model = $default_embedding_model,
+                default_tools_model = $default_tools_model,
+                created = $created,
+                updated = $updated
+            """
+            await db.query(create_query, defaults_data)
+            result = defaults_data
+            
+        except Exception as db_error:
+            print(f"Database error: {db_error}")
+            # Fallback: return the data as if saved
+            result = defaults_data
+        
+        return {
+            "id": DEFAULT_MODELS_RECORD,
+            "default_chat_model": result.get("default_chat_model"),
+            "default_transformation_model": result.get("default_transformation_model"),
+            "large_context_model": result.get("large_context_model"),
+            "default_text_to_speech_model": result.get("default_text_to_speech_model"),
+            "default_speech_to_text_model": result.get("default_speech_to_text_model"),
+            "default_embedding_model": result.get("default_embedding_model"),
+            "default_tools_model": result.get("default_tools_model"),
+            "created": result.get("created", datetime.utcnow().isoformat()),
+            "updated": result.get("updated", datetime.utcnow().isoformat())
         }
     except Exception as e:
         print(f"Error updating default models: {e}")

@@ -37,31 +37,57 @@ def provision_langchain_model(
             from esperanto import AIFactory
             
             # Get all language models from the database
-            available_models = Model.select().where(Model.type == "language").limit(1)
+            available_models = Model.get_models_by_type("language")
             if available_models:
-                fallback_model = available_models[0]
+                # Prefer the new thealpha model name if available
+                fallback_model = None
+                for model in available_models:
+                    if model.provider == "thealpha" and "gpt-4.1-mini" in model.name:
+                        fallback_model = model
+                        break
+                
+                # If no preferred model found, use the first available
+                if fallback_model is None:
+                    fallback_model = available_models[0]
+                
                 logger.info(f"Using fallback model: {fallback_model.name} ({fallback_model.provider})")
-                model = AIFactory.create_language(
-                    model_name=fallback_model.name,
-                    provider=fallback_model.provider,
-                    config=kwargs,
-                )
+                
+                # Handle fallback model based on its type
+                if fallback_model.type == "language":
+                    model = AIFactory.create_language(
+                        model_name=fallback_model.name,
+                        provider=fallback_model.provider,
+                        config=kwargs,
+                    )
+                elif fallback_model.type == "embedding":
+                    model = AIFactory.create_embedding(
+                        model_name=fallback_model.name,
+                        provider=fallback_model.provider,
+                        config=kwargs,
+                    )
+                elif fallback_model.type == "text_to_speech":
+                    model = AIFactory.create_text_to_speech(
+                        model_name=fallback_model.name,
+                        provider=fallback_model.provider,
+                        config=kwargs,
+                    )
+                elif fallback_model.type == "speech_to_text":
+                    model = AIFactory.create_speech_to_text(
+                        model_name=fallback_model.name,
+                        provider=fallback_model.provider,
+                        config=kwargs,
+                    )
+                else:
+                    logger.warning(f"Unsupported model type: {fallback_model.type}")
+                    return None
             else:
-                # Last resort: create a basic OpenAI model
-                logger.warning("No models found in database, creating fallback OpenAI model")
-                model = AIFactory.create_language(
-                    model_name="gpt-3.5-turbo",
-                    provider="openai",
-                    config=kwargs,
-                )
+                # No models found in database - return None instead of forcing OpenAI
+                logger.warning("No models found in database, cannot create fallback model")
+                return None
         except Exception as e:
             logger.error(f"Failed to create fallback model: {e}")
-            # Create a basic OpenAI model as last resort
-            model = AIFactory.create_language(
-                model_name="gpt-3.5-turbo",
-                provider="openai",
-                config=kwargs,
-            )
+            # Return None instead of forcing OpenAI model creation
+            return None
 
     logger.debug(f"Using model: {model}")
     assert isinstance(model, LanguageModel), f"Model is not a LanguageModel: {model}"

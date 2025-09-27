@@ -187,7 +187,8 @@ class Source(ObjectModel):
 
     def vectorize(self) -> None:
         logger.info(f"Starting vectorization for source {self.id}")
-        EMBEDDING_MODEL = model_manager.embedding_model
+        # Get the current embedding model (don't cache it globally)
+        current_embedding_model = model_manager.embedding_model
 
         try:
             if not self.full_text:
@@ -208,7 +209,7 @@ class Source(ObjectModel):
                 idx, chunk = args
                 logger.debug(f"Processing chunk {idx}/{chunk_count}")
                 try:
-                    embedding = EMBEDDING_MODEL.embed([chunk])[0]
+                    embedding = current_embedding_model.embed([chunk])[0]
                     cleaned_content = surreal_clean(chunk)
                     logger.debug(f"Successfully processed chunk {idx}")
                     return (idx, embedding, cleaned_content)
@@ -248,8 +249,18 @@ class Source(ObjectModel):
             raise DatabaseOperationError(e)
 
     def add_insight(self, insight_type: str, content: str) -> Any:
-        EMBEDDING_MODEL = model_manager.embedding_model
-        if not EMBEDDING_MODEL:
+        # Get the current embedding model (don't cache it globally)
+        current_embedding_model = model_manager.embedding_model
+        print(f"DEBUG: add_insight got embedding model: {type(current_embedding_model)}")
+        if hasattr(current_embedding_model, '_api_key'):
+            print(f"DEBUG: add_insight model api_key: {current_embedding_model._api_key}")
+        if hasattr(current_embedding_model, '_base_url'):
+            print(f"DEBUG: add_insight model base_url: {current_embedding_model._base_url}")
+        if hasattr(current_embedding_model, '_model'):
+            print(f"DEBUG: add_insight model _model: {current_embedding_model._model}")
+        if hasattr(current_embedding_model, 'provider'):
+            print(f"DEBUG: add_insight model provider: {current_embedding_model.provider}")
+        if not current_embedding_model:
             logger.warning("No embedding model found. Insight will not be searchable.")
 
         if not insight_type or not content:
@@ -275,7 +286,7 @@ class Source(ObjectModel):
                 existing_insight = existing_insights[0]
                 logger.info(f"Updating existing insight of type '{insight_type}' for source {self.id}")
                 
-                embedding = EMBEDDING_MODEL.embed([content])[0] if EMBEDDING_MODEL else []
+                embedding = current_embedding_model.embed([content])[0] if current_embedding_model else []
                 result = repo_query(
                     """
                     UPDATE $insight_id SET {
@@ -294,7 +305,7 @@ class Source(ObjectModel):
             else:
                 # Create new insight if none exists
                 logger.info(f"Creating new insight of type '{insight_type}' for source {self.id}")
-                embedding = EMBEDDING_MODEL.embed([content])[0] if EMBEDDING_MODEL else []
+                embedding = current_embedding_model.embed([content])[0] if current_embedding_model else []
                 result = repo_query(
                     """
                     CREATE source_insight CONTENT {
@@ -412,8 +423,9 @@ def vector_search(
     if not keyword:
         raise InvalidInputError("Search keyword cannot be empty")
     try:
-        EMBEDDING_MODEL = model_manager.embedding_model
-        embed = EMBEDDING_MODEL.embed([keyword])[0]
+        # Get the current embedding model (don't cache it globally)
+        current_embedding_model = model_manager.embedding_model
+        embed = current_embedding_model.embed([keyword])[0]
         results = repo_query(
             """
             SELECT * FROM fn::vector_search($embed, $results, $source, $note, $minimum_score);

@@ -31,6 +31,11 @@ def call_model(state: dict, config: RunnableConfig) -> dict:
         max_tokens=3000,
     )
 
+    if chain is None:
+        # No model available - return a simple fallback response
+        logger.warning("No language model available for prompt processing")
+        return {"output": "Untitled"}
+
     response = chain.invoke(payload)
 
     return {"output": response.content}

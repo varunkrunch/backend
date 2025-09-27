@@ -29,7 +29,7 @@ class Model(ObjectModel):
 
 
 class DefaultModels(RecordModel):
-    record_id: ClassVar[str] = "fastapi_backend:default_models"
+    record_id: ClassVar[str] = "open_notebook:default_models"
     default_chat_model: Optional[str] = None
     default_transformation_model: Optional[str] = None
     large_context_model: Optional[str] = None
@@ -54,8 +54,16 @@ class ModelManager:
             self._model_cache: Dict[str, ModelType] = {}
             self._default_models = None
             self.refresh_defaults()
+    
+    def clear_cache(self):
+        """Clear the model cache to force reload of models"""
+        self._model_cache.clear()
+        self._default_models = None
+        self.refresh_defaults()
 
     def get_model(self, model_id: str, **kwargs) -> Optional[ModelType]:
+        import os
+        
         if not model_id:
             return None
 
@@ -85,30 +93,293 @@ class ModelManager:
         ]:
             raise ValueError(f"Invalid model type: {model.type}")
 
-        if model.type == "language":
-            model_instance: LanguageModel = AIFactory.create_language(
-                model_name=model.name,
-                provider=model.provider,
-                config=kwargs,
-            )
-        elif model.type == "embedding":
-            model_instance: EmbeddingModel = AIFactory.create_embedding(
-                model_name=model.name,
-                provider=model.provider,
-                config=kwargs,
-            )
-        elif model.type == "speech_to_text":
-            model_instance: SpeechToTextModel = AIFactory.create_speech_to_text(
-                model_name=model.name,
-                provider=model.provider,
-                config=kwargs,
-            )
-        elif model.type == "text_to_speech":
-            model_instance: TextToSpeechModel = AIFactory.create_text_to_speech(
-                model_name=model.name,
-                provider=model.provider,
-                config=kwargs,
-            )
+        # Special handling for thealpha provider - treat as custom OpenAI endpoint
+        if model.provider == "thealpha":
+            # Clear any cached thealpha models to ensure fresh configuration
+            keys_to_remove = [key for key in self._model_cache.keys() if key.startswith(model_id)]
+            for key in keys_to_remove:
+                print(f"DEBUG: Removing cached thealpha model: {key}")
+                del self._model_cache[key]
+            from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+            
+            # Get thealpha configuration from environment
+            thealpha_api_key = os.environ.get("THEALPHA_API_KEY")
+            thealpha_base_url = os.environ.get("THEALPHA_API_BASE", "https://thealpha.dev/api")
+            
+            # Clear cache to ensure fresh models with current environment variables
+            cache_key = f"{model_id}:{str(kwargs)}"
+            if cache_key in self._model_cache:
+                print(f"DEBUG: Clearing cached model for key: {cache_key}")
+                del self._model_cache[cache_key]
+            
+            # Debug logging
+            print(f"DEBUG: THEALPHA_API_KEY = {thealpha_api_key}")
+            print(f"DEBUG: THEALPHA_API_BASE = {thealpha_base_url}")
+            print(f"DEBUG: All env vars with THEALPHA: {[k for k in os.environ.keys() if 'THEALPHA' in k]}")
+            print(f"DEBUG: Expected API key: sk-b914a7397daa42088f47bfc825cc995d")
+            print(f"DEBUG: API key matches expected: {thealpha_api_key == 'sk-b914a7397daa42088f47bfc825cc995d'}")
+            print(f"DEBUG: Expected base URL: https://thealpha.dev/api/v1/")
+            print(f"DEBUG: Base URL matches expected: {thealpha_base_url == 'https://thealpha.dev/api/v1/'}")
+            
+            if not thealpha_api_key:
+                raise ValueError("THEALPHA_API_KEY not found in environment variables")
+            
+            # Test the API key by making a simple request
+            try:
+                import requests
+                test_response = requests.get(
+                    f"{thealpha_base_url}/models",
+                    headers={"Authorization": f"Bearer {thealpha_api_key}"},
+                    timeout=5
+                )
+                print(f"DEBUG: TheAlpha API test response: {test_response.status_code}")
+                if test_response.status_code == 200:
+                    models_data = test_response.json()
+                    print(f"DEBUG: Available models: {models_data}")
+                else:
+                    print(f"DEBUG: TheAlpha API test failed: {test_response.text}")
+            except Exception as e:
+                print(f"DEBUG: TheAlpha API test error: {e}")
+            
+            # Create model based on type using LangChain directly with thealpha config
+            if model.type == "language":
+                # Create a wrapper that inherits from LanguageModel
+                class TheAlphaLanguageModel(LanguageModel):
+                    def __init__(self, model_name, api_key, base_url, **kwargs):
+                        super().__init__()
+                        self._model = ChatOpenAI(
+                            model=model_name,
+                            api_key=api_key,
+                            base_url=base_url,
+                            **kwargs
+                        )
+                        self._model_name = model_name
+                        self._api_key = api_key
+                        self._base_url = base_url
+                    
+                    def _get_default_model(self):
+                        return self._model_name
+                    
+                    def achat_complete(self, *args, **kwargs):
+                        return self._model.ainvoke(*args, **kwargs)
+                    
+                    def chat_complete(self, *args, **kwargs):
+                        return self._model.invoke(*args, **kwargs)
+                    
+                    @property
+                    def models(self):
+                        return [self._model_name]
+                    
+                    @property
+                    def provider(self):
+                        return "thealpha"
+                    
+                    def to_langchain(self):
+                        return self._model
+                    
+                    def __getattr__(self, name):
+                        return getattr(self._model, name)
+                
+                model_instance = TheAlphaLanguageModel(
+                    model_name=model.name,
+                    api_key=thealpha_api_key,
+                    base_url=thealpha_base_url,
+                    **kwargs
+                )
+            elif model.type == "embedding":
+                # Create a wrapper that inherits from EmbeddingModel
+                class TheAlphaEmbeddingModel(EmbeddingModel):
+                    def __init__(self, model_name, api_key, base_url, **kwargs):
+                        super().__init__()
+                        # The thealpha API doesn't support embeddings
+                        # We'll create a dummy embedding model that returns empty embeddings
+                        self._model = None  # No actual embedding model
+                        self._model_name = model_name
+                        self._api_key = api_key
+                        self._base_url = base_url
+                        
+                        # Debug: Verify the model configuration
+                        print(f"DEBUG: TheAlphaEmbeddingModel created with:")
+                        print(f"  - model_name: {model_name}")
+                        print(f"  - api_key: {api_key}")
+                        print(f"  - base_url: {base_url}")
+                        print(f"  - Note: TheAlpha API doesn't support embeddings, returning empty embeddings")
+                    
+                    def _get_default_model(self):
+                        return self._model_name
+                    
+                    def aembed_documents(self, *args, **kwargs):
+                        # Return empty embeddings since thealpha doesn't support embeddings
+                        return [[] for _ in args[0]] if args else []
+                    
+                    def aembed_query(self, *args, **kwargs):
+                        # Return empty embedding since thealpha doesn't support embeddings
+                        return []
+                    
+                    def embed_documents(self, *args, **kwargs):
+                        # Return empty embeddings since thealpha doesn't support embeddings
+                        return [[] for _ in args[0]] if args else []
+                    
+                    def embed_query(self, *args, **kwargs):
+                        # Return empty embedding since thealpha doesn't support embeddings
+                        return []
+                    
+                    def aembed(self, *args, **kwargs):
+                        # Return empty embeddings since thealpha doesn't support embeddings
+                        return [[] for _ in args[0]] if args else []
+                    
+                    def embed(self, *args, **kwargs):
+                        # Return empty embeddings since thealpha doesn't support embeddings
+                        return [[] for _ in args[0]] if args else []
+                    
+                    @property
+                    def models(self):
+                        return [self._model_name]
+                    
+                    @property
+                    def provider(self):
+                        return "thealpha"
+                    
+                    def to_langchain(self):
+                        # Return a simple object since we don't have an actual embedding model
+                        return type('LangChainEmbedding', (), {})()
+                    
+                    def __getattr__(self, name):
+                        # Since we don't have an actual model, return None for any attribute access
+                        return None
+                
+                model_instance = TheAlphaEmbeddingModel(
+                    model_name=model.name,
+                    api_key=thealpha_api_key,
+                    base_url=thealpha_base_url,
+                    **kwargs
+                )
+                print(f"DEBUG: Created TheAlphaEmbeddingModel with api_key={thealpha_api_key}, base_url={thealpha_base_url}")
+                
+                # Test the model immediately
+                try:
+                    test_embedding = model_instance.embed(["test"])
+                    print(f"DEBUG: Model test successful, embedding length: {len(test_embedding)}")
+                    print(f"DEBUG: Note: TheAlpha API doesn't support embeddings, returning empty embeddings")
+                except Exception as e:
+                    print(f"DEBUG: Model test failed: {e}")
+                    print(f"DEBUG: Model instance attributes:")
+                    print(f"  - _api_key: {getattr(model_instance, '_api_key', 'NOT SET')}")
+                    print(f"  - _base_url: {getattr(model_instance, '_base_url', 'NOT SET')}")
+                    print(f"  - _model_name: {getattr(model_instance, '_model_name', 'NOT SET')}")
+                    print(f"  - Note: TheAlpha API doesn't support embeddings")
+            elif model.type == "text_to_speech":
+                # Create a wrapper that inherits from TextToSpeechModel
+                class TheAlphaTextToSpeechModel(TextToSpeechModel):
+                    def __init__(self, model_name, api_key, base_url, **kwargs):
+                        super().__init__()
+                        self._model_name = model_name
+                        self._api_key = api_key
+                        self._base_url = base_url
+                        self._kwargs = kwargs
+                    
+                    def _get_default_model(self):
+                        return self._model_name
+                    
+                    def agenerate_speech(self, *args, **kwargs):
+                        # Thealpha doesn't support TTS, return empty audio
+                        return b""
+                    
+                    def available_voices(self, *args, **kwargs):
+                        # Thealpha doesn't support TTS, return empty list
+                        return []
+                    
+                    def generate_speech(self, *args, **kwargs):
+                        # Thealpha doesn't support TTS, return empty audio
+                        return b""
+                    
+                    @property
+                    def models(self):
+                        return [self._model_name]
+                    
+                    @property
+                    def provider(self):
+                        return "thealpha"
+                    
+                    def to_langchain(self):
+                        # Return a simple object for now
+                        return type('LangChainTTS', (), {})()
+                
+                model_instance = TheAlphaTextToSpeechModel(
+                    model_name=model.name,
+                    api_key=thealpha_api_key,
+                    base_url=thealpha_base_url,
+                    **kwargs
+                )
+            elif model.type == "speech_to_text":
+                # Create a wrapper that inherits from SpeechToTextModel
+                class TheAlphaSpeechToTextModel(SpeechToTextModel):
+                    def __init__(self, model_name, api_key, base_url, **kwargs):
+                        super().__init__()
+                        self._model_name = model_name
+                        self._api_key = api_key
+                        self._base_url = base_url
+                        self._kwargs = kwargs
+                    
+                    def _get_default_model(self):
+                        return self._model_name
+                    
+                    def atranscribe(self, *args, **kwargs):
+                        # Thealpha doesn't support STT, return empty text
+                        return ""
+                    
+                    def transcribe(self, *args, **kwargs):
+                        # Thealpha doesn't support STT, return empty text
+                        return ""
+                    
+                    @property
+                    def models(self):
+                        return [self._model_name]
+                    
+                    @property
+                    def provider(self):
+                        return "thealpha"
+                    
+                    def to_langchain(self):
+                        # Return a simple object for now
+                        return type('LangChainSTT', (), {})()
+                
+                model_instance = TheAlphaSpeechToTextModel(
+                    model_name=model.name,
+                    api_key=thealpha_api_key,
+                    base_url=thealpha_base_url,
+                    **kwargs
+                )
+            else:
+                raise ValueError(f"Unsupported model type for thealpha: {model.type}")
+        else:
+            # Handle other providers based on model type
+            if model.type == "language":
+                model_instance: LanguageModel = AIFactory.create_language(
+                    model_name=model.name,
+                    provider=model.provider,
+                    config=kwargs,
+                )
+            elif model.type == "embedding":
+                model_instance: EmbeddingModel = AIFactory.create_embedding(
+                    model_name=model.name,
+                    provider=model.provider,
+                    config=kwargs,
+                )
+            elif model.type == "text_to_speech":
+                model_instance: TextToSpeechModel = AIFactory.create_text_to_speech(
+                    model_name=model.name,
+                    provider=model.provider,
+                    config=kwargs,
+                )
+            elif model.type == "speech_to_text":
+                model_instance: SpeechToTextModel = AIFactory.create_speech_to_text(
+                    model_name=model.name,
+                    provider=model.provider,
+                    config=kwargs,
+                )
+            else:
+                raise ValueError(f"Unsupported model type: {model.type}")
 
         self._model_cache[cache_key] = model_instance
         return model_instance
@@ -153,10 +424,18 @@ class ModelManager:
     @property
     def embedding_model(self, **kwargs) -> Optional[EmbeddingModel]:
         """Get the default embedding model"""
+        print(f"DEBUG: embedding_model property called")
         model_id = self.defaults.default_embedding_model
+        print(f"DEBUG: Default embedding model ID: {model_id}")
+        
         if not model_id:
+            print("DEBUG: No default embedding model set")
             return None
+        
+        print(f"DEBUG: Getting embedding model with ID: {model_id}")
         model = self.get_model(model_id, **kwargs)
+        print(f"DEBUG: Got embedding model: {type(model)}")
+        
         assert model is None or isinstance(model, EmbeddingModel), (
             f"Expected EmbeddingModel but got {type(model)}"
         )

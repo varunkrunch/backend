@@ -18,6 +18,7 @@ from ..models import (
     TransformationResponse,
     TransformationRunRequest,
     TransformationRunResponse,
+    StatusResponse,
 )
 
 # Create router for transformation-related endpoints
@@ -49,6 +50,72 @@ def convert_surreal_record(record: dict) -> dict:
     elif isinstance(record, list):
         return [convert_surreal_record(item) for item in record]
     return record
+
+@router.get("/default", response_model=Optional[TransformationResponse], operation_id="get_default_transformation")
+async def get_default_transformation(db: AsyncSurreal = Depends(get_db_connection)):
+    """Get the currently set default transformation."""
+    try:
+        # Find transformation with apply_default = true
+        query = "SELECT * FROM transformation WHERE apply_default = true LIMIT 1"
+        result = await db.query(query)
+        
+        if result and len(result) > 0:
+            transformation_data = convert_surreal_record(result[0])
+            return TransformationResponse(**transformation_data)
+        else:
+            return None
+    except Exception as e:
+        print(f"Error getting default transformation: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Internal server error getting default transformation: {e}")
+
+@router.post("/{transformation_id}/set-default", response_model=StatusResponse, operation_id="set_default_transformation")
+async def set_default_transformation(
+    transformation_id: str,
+    db: AsyncSurreal = Depends(get_db_connection)
+):
+    """Set a transformation as the default transformation."""
+    try:
+        print(f"DEBUG: Setting transformation {transformation_id} as default")
+        
+        # Use the synchronous database connection that we know works
+        from ..open_notebook.database.repository import repo_query
+        
+        # First, unset any existing default transformation
+        unset_query = "UPDATE transformation SET apply_default = false WHERE apply_default = true"
+        print(f"DEBUG: Executing unset query: {unset_query}")
+        unset_result = repo_query(unset_query)
+        print(f"DEBUG: Unset result: {unset_result}")
+        
+        # Set the specified transformation as default
+        set_query = f"UPDATE {transformation_id} SET apply_default = true"
+        print(f"DEBUG: Executing set query: {set_query}")
+        result = repo_query(set_query)
+        print(f"DEBUG: Set result: {result}")
+        
+        if result:
+            print(f"DEBUG: Successfully set transformation {transformation_id} as default")
+            return StatusResponse(status="success", message=f"Transformation {transformation_id} set as default")
+        else:
+            print(f"DEBUG: No result returned for transformation {transformation_id}")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Transformation {transformation_id} not found")
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        print(f"Error setting default transformation: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Internal server error setting default transformation: {e}")
+
+@router.post("/unset-default", response_model=StatusResponse, operation_id="unset_default_transformation")
+async def unset_default_transformation(db: AsyncSurreal = Depends(get_db_connection)):
+    """Unset the current default transformation."""
+    try:
+        # Unset any existing default transformation
+        query = "UPDATE transformation SET apply_default = false WHERE apply_default = true"
+        result = await db.query(query)
+        
+        return StatusResponse(status="success", message="Default transformation unset successfully")
+    except Exception as e:
+        print(f"Error unsetting default transformation: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Internal server error unsetting default transformation: {e}")
 
 @router.get("", response_model=List[TransformationResponse], operation_id="list_transformations")
 async def list_transformations(

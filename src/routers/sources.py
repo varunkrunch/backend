@@ -207,8 +207,11 @@ async def add_source_to_notebook(
                 if t.name in apply_transformations:
                     transformations.append(t)
     else:
-        # No automatic default transformations - user must explicitly request them
-        transformations = []
+        # Apply default transformations automatically when no specific transformations are requested
+        for t in Transformation.get_all():
+            if t.apply_default:
+                transformations.append(t)
+                print(f"Auto-applying default transformation: {t.name}")
 
     state = {
         "content_state": req,
@@ -386,8 +389,11 @@ async def add_source_to_notebook_by_name(
                 if t.name in apply_transformations:
                     transformations.append(t)
     else:
-        # No automatic default transformations - user must explicitly request them
-        transformations = []
+        # Apply default transformations automatically when no specific transformations are requested
+        for t in Transformation.get_all():
+            if t.apply_default:
+                transformations.append(t)
+                print(f"Auto-applying default transformation: {t.name}")
 
     state = {
         "content_state": req,
@@ -429,8 +435,8 @@ async def add_source_to_notebook_by_name(
                     source.save()
                     
             except Exception as title_error:
-                print(f"Error generating title: {title_error}")
-                # Fallback to default title
+                print(f"Error generating title (this is optional): {title_error}")
+                # Fallback to default title - don't fail the entire operation
                 if type == "link":
                     title = f"Link: {url[:50]}..." if url else "Untitled Link"
                 elif type == "upload":
@@ -861,7 +867,7 @@ async def delete_source(
     source_id: str,
     db: AsyncSurreal = Depends(get_db_connection)
 ):
-    """Deletes a source. Note: Does not currently delete associated insights/embeddings."""
+    """Deletes a source and all associated insights and embeddings."""
     # URL decode the source_id to handle encoded colons
     import urllib.parse
     decoded_source_id = urllib.parse.unquote(source_id)
@@ -869,10 +875,20 @@ async def delete_source(
     if ":" not in decoded_source_id:
          raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid source ID format.")
     try:
-        # Delete the source
+        # First, delete all associated insights
+        insights_query = f"DELETE FROM source_insight WHERE source = $source_id"
+        await db.query(insights_query, {"source_id": decoded_source_id})
+        print(f"Deleted insights for source {decoded_source_id}")
+        
+        # Delete all associated embeddings
+        embeddings_query = f"DELETE FROM source_embedding WHERE source = $source_id"
+        await db.query(embeddings_query, {"source_id": decoded_source_id})
+        print(f"Deleted embeddings for source {decoded_source_id}")
+        
+        # Finally, delete the source itself
         result = await db.delete(decoded_source_id)
         if result:
-            return StatusResponse(status="success", message=f"Source {decoded_source_id} deleted successfully")
+            return StatusResponse(status="success", message=f"Source {decoded_source_id} and all associated data deleted successfully")
         else:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Source {decoded_source_id} not found")
     except HTTPException as http_exc:
@@ -886,7 +902,7 @@ async def delete_source_by_title(
     title: str,
     db: AsyncSurreal = Depends(get_db_connection)
 ):
-    """Deletes a source by its title. Note: Does not currently delete associated insights/embeddings."""
+    """Deletes a source by its title and all associated insights and embeddings."""
     try:
         # Find the source by title - try multiple approaches
         query = f"SELECT id FROM {SOURCE_TABLE} WHERE title = $title"
@@ -908,16 +924,26 @@ async def delete_source_by_title(
         else:
             source_id = str(source_id)
         
-        # Delete the source
+        # First, delete all associated insights
+        insights_query = f"DELETE FROM source_insight WHERE source = $source_id"
+        await db.query(insights_query, {"source_id": source_id})
+        print(f"Deleted insights for source {source_id}")
+        
+        # Delete all associated embeddings
+        embeddings_query = f"DELETE FROM source_embedding WHERE source = $source_id"
+        await db.query(embeddings_query, {"source_id": source_id})
+        print(f"Deleted embeddings for source {source_id}")
+        
+        # Finally, delete the source itself
         delete_result = await db.delete(source_id)
         if delete_result:
-            return StatusResponse(status="success", message=f"Source \'{title}\' deleted successfully")
+            return StatusResponse(status="success", message=f"Source \'{title}\' and all associated data deleted successfully")
         else:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Source \'{title}\' not found")
     except HTTPException as http_exc:
         raise http_exc
     except Exception as e:
-        print(f"Error deleting source with title \'{title}\' : {e}")
+        print(f"Error deleting source by title {title}: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Internal server error deleting source: {e}")
 
 @router.put("/api/v1/sources/{source_id}", response_model=SourceResponse)
