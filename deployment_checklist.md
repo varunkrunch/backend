@@ -152,3 +152,4 @@ If you want to copy your current configuration:
 - **Database**: Starts empty, populated by user actions
 - **No Migration**: Fresh install starts with clean slate
 
+
