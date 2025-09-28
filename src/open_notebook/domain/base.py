@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, ClassVar, Dict, List, Optional, Type, TypeVar, cast
+from typing import Any, ClassVar, Dict, List, Optional, Type, TypeVar, Union, cast
 
 from loguru import logger
 from pydantic import BaseModel, ValidationError, field_validator, model_validator
@@ -74,7 +74,6 @@ class ObjectModel(BaseModel):
                 else:
                     converted[key] = value
         return converted
-
     @classmethod
     def get_all(cls: Type[T], order_by=None) -> List[T]:
         try:
@@ -124,12 +123,16 @@ class ObjectModel(BaseModel):
             raise DatabaseOperationError(e)
 
     @classmethod
-    def get(cls: Type[T], id: str) -> T:
+    def get(cls: Type[T], id: Union[str, Any]) -> T:
         if not id:
             raise InvalidInputError("ID cannot be empty")
+            
+        # Convert RecordID to string if necessary
+        id_str = str(id)
+        
         try:
             # Get the table name from the ID (everything before the first colon)
-            table_name = id.split(":")[0] if ":" in id else id
+            table_name = id_str.split(":")[0] if ":" in id_str else id_str
 
             # If we're calling from a specific subclass and IDs match, use that class
             if cls.table_name and cls.table_name == table_name:
@@ -141,14 +144,20 @@ class ObjectModel(BaseModel):
                     raise InvalidInputError(f"No class found for table {table_name}")
                 target_class = cast(Type[T], found_class)
 
-            result = repo_query(f"SELECT * FROM {id}")
+            # Ensure we're using the string ID for the query
+            result = repo_query(f"SELECT * FROM {id_str}")
             if result:
                 # Convert SurrealDB types before creating the object
                 converted_obj = cls._convert_surreal_types(result[0])
                 
-                # Double-check ID conversion
-                if 'id' in result[0] and hasattr(result[0]['id'], 'table_name') and hasattr(result[0]['id'], 'record_id'):
-                    converted_obj['id'] = f"{result[0]['id'].table_name}:{result[0]['id'].record_id}"
+                # Handle RecordID objects in the result
+                if 'id' in result[0] and result[0]['id'] is not None:
+                    if hasattr(result[0]['id'], 'table_name') and hasattr(result[0]['id'], 'record_id'):
+                        # Convert RecordID to string format
+                        converted_obj['id'] = f"{result[0]['id'].table_name}:{result[0]['id'].record_id}"
+                    elif not isinstance(result[0]['id'], str):
+                        # Convert any other non-string ID to string
+                        converted_obj['id'] = str(result[0]['id'])
                 
                 return target_class(**converted_obj)
             else:

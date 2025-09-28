@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from typing import Dict, List, Literal, Optional, Any
 from datetime import datetime
 import os
@@ -903,18 +903,25 @@ async def get_default_models_config(db: AsyncSurreal = Depends(get_db_connection
         )
 
 @router.patch("/config/defaults")
-async def update_default_models_config(defaults: dict, db: AsyncSurreal = Depends(get_db_connection)):
+async def update_default_models_config(
+    request: Request,
+    db: AsyncSurreal = Depends(get_db_connection)
+):
     """Update the default model configurations"""
     try:
+        # Parse form data
+        form_data = await request.form()
+        defaults = dict(form_data)
+        
         # Prepare the data to save
         defaults_data = {
-            "default_chat_model": defaults.get("default_chat_model"),
-            "default_transformation_model": defaults.get("default_transformation_model"),
-            "large_context_model": defaults.get("large_context_model"),
-            "default_text_to_speech_model": defaults.get("default_text_to_speech_model"),
-            "default_speech_to_text_model": defaults.get("default_speech_to_text_model"),
-            "default_embedding_model": defaults.get("default_embedding_model"),
-            "default_tools_model": defaults.get("default_tools_model"),
+            "default_chat_model": defaults.get("default_chat_model") or None,
+            "default_transformation_model": defaults.get("default_transformation_model") or None,
+            "large_context_model": defaults.get("large_context_model") or None,
+            "default_text_to_speech_model": defaults.get("default_text_to_speech_model") or None,
+            "default_speech_to_text_model": defaults.get("default_speech_to_text_model") or None,
+            "default_embedding_model": defaults.get("default_embedding_model") or None,
+            "default_tools_model": defaults.get("default_tools_model") or None,
             "updated": datetime.utcnow().isoformat()
         }
         
