@@ -3,6 +3,57 @@
 .env.*
 !.env.example
 
+# Local development
+local.env
+secrets.env
+
+# Python specific
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+ENV/
+.venv/
+
+# IDE specific
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+
+# Local development
+local_settings.py
+db.sqlite3
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Build/Deployment
+build/
+dist/
+*.egg-info/
+
+# Large files
+*.pdf
+*.mp3
+*.mp4
+*.zip
+*.tar
+*.gz
+
+# Database files
+*.db
+*.sqlite3
+*.sqlite
+
 # Virtual Environment
 venv/
 .venv/
