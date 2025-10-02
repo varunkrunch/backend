@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - .:/app
+    environment:
+      - SURREAL_ADDRESS=surrealdb
+      - SURREAL_PORT=8000
+      - SURREAL_USER=root
+      - SURREAL_PASS=root
+      - SURREAL_NAMESPACE=fastapi_backend
+      - SURREAL_DATABASE=staging
+      - DATA_FOLDER=/app/data
+    depends_on:
+      - surrealdb
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+
+  surrealdb:
+    image: surrealdb/surrealdb:latest
+    ports:
+      - "8001:8000"
+    volumes:
+      - surrealdb_data:/data
+    command: start --log trace --user root --pass root file:///data/db
+    environment:
+      - SURREAL_USER=root
+      - SURREAL_PASS=root
+
+volumes:
+  surrealdb_data:

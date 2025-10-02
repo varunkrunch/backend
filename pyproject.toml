@@ -1,0 +1,89 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "open-notebook-backend"
+version = "0.1.0"
+description = "Backend for Open Notebook application"
+authors = [
+    {name = "Your Name", email = "your.email@example.com"}
+]
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "python-multipart>=0.0.6",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "aiofiles>=23.2.1",
+    "python-dotenv>=1.0.1",
+    "pyyaml>=6.0.0",
+    "surrealdb>=1.0.0",
+    "sdblpy @ git+https://github.com/varunkrunch/surreal-lite-py",
+    "podcastfy @ git+https://github.com/varunkrunch/podcastfy",
+    "pydantic>=2.9.2",
+    "langchain>=0.3.3",
+    "langchain-community>=0.3.3",
+    "langchain-openai>=0.2.3",
+    "langchain-anthropic>=0.2.3",
+    "langgraph>=0.2.38",
+    "langgraph-checkpoint-sqlite>=2.0.0",
+    "langchain-ollama>=0.2.0",
+    "langchain-google-genai>=2.0.1",
+    "langchain-groq>=0.2.1",
+    "langchain-mistralai>=0.2.1",
+    "langchain-deepseek>=0.1.3",
+    "langchain-google-vertexai>=2.0.10",
+    "groq>=0.12.0",
+    "content-core>=1.0.2",
+    "ai-prompter>=0.3.0",
+    "esperanto>=2.0.4",
+    "python-magic>=0.4.27",
+    "python-magic-bin>=0.4.14; sys_platform == 'win32'",
+    "requests>=2.31.0",
+    "loguru>=0.7.2",
+    "humanize>=4.11.0",
+    "nest-asyncio>=1.6.0",
+    "tomli>=2.0.2",
+    "httpx[socks]>=0.27.0",
+    "tiktoken>=0.8.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "ipykernel>=6.29.5",
+    "ruff>=0.5.5",
+    "mypy>=1.11.1",
+    "types-requests>=2.32.0.20241016",
+    "ipywidgets>=8.1.5",
+    "pre-commit>=4.1.0",
+    "watchdog>=6.0.0",
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0"
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[project.scripts]
+start = "uvicorn main:app --reload --host 0.0.0.0 --port 8000"
+
+[tool.ruff]
+line-length = 120
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+warn_unused_configs = true
