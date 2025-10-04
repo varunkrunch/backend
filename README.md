@@ -156,6 +156,35 @@ pytest
 pytest --cov=src --cov-report=term-missing
 ```
 
+## 🛠️ Model Configuration
+
+The application uses the following models for different tasks:
+
+### 1. Language Models
+- **Provider**: TheAlpha
+- **Model**: `openaigpt-41-mini`
+- **Used For**: Chat, text generation, transformation, and tools
+- **Base URL**: `https://thealpha.dev/api`
+- **Environment Variable**: `THEALPHA_API_KEY`
+
+### 2. Embedding Model
+- **Provider**: OpenAI
+- **Model**: `text-embedding-3-small`
+- **Used For**: Text embeddings and similarity search
+- **Environment Variable**: `OPENAI_API_KEY`
+
+### 3. Text-to-Speech (TTS)
+- **Provider**: OpenAI
+- **Model**: `tts-1`
+- **Used For**: Converting text to speech
+- **Environment Variable**: `OPENAI_API_KEY`
+
+### 4. Speech-to-Text (STT)
+- **Provider**: OpenAI
+- **Model**: `whisper-1`
+- **Used For**: Converting speech to text
+- **Environment Variable**: `OPENAI_API_KEY`
+
 ## 🤝 Contributing
 
 1. Fork the repository

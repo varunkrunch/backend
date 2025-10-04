@@ -1,6 +1,14 @@
 # FastAPI Backend Main Application
 from dotenv import load_dotenv
 load_dotenv()
+
+# Apply TTS patch before any other imports that might use the TTS functionality
+try:
+    from .tts_patch import PatchedOpenAITextToSpeechModel
+    print("✅ Successfully imported TTS patch")
+except ImportError as e:
+    print(f"⚠️ Warning: Could not import TTS patch: {e}")
+
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager

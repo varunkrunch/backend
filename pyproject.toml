@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,7 +9,22 @@ description = "Backend for Open Notebook application"
 authors = [
     {name = "Your Name", email = "your.email@example.com"}
 ]
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
 dependencies = [
+    # Core web framework
     "fastapi>=0.104.0",
     "uvicorn[standard]>=0.24.0",
     "python-multipart>=0.0.6",
@@ -18,9 +33,33 @@ dependencies = [
     "aiofiles>=23.2.1",
     "python-dotenv>=1.0.1",
     "pyyaml>=6.0.0",
+    
+    # Database and storage
+    "surrealdb>=1.0.0",
+    "sqlalchemy>=2.0.0",
+    
+    # Core utilities
+    "loguru>=0.7.0",
+    "tomli>=2.0.0",
+    "python-dateutil>=2.8.0",
+    "humanize>=4.0.0",
+    "mutagen>=1.47.0",
+    
+    # AI/ML Core
+    "langchain-core>=0.1.0",
+    "langchain-text-splitters>=0.0.1",
+    "langchain-openai>=0.0.1",
+    "langgraph>=0.0.1",
+    "langgraph-checkpoint-sqlite>=0.0.1",
+    "ai-prompter>=0.1.0",
+    "esperanto>=2.0.0",
+    
+    # Database
     "surrealdb>=1.0.0",
     "sdblpy @ git+https://github.com/varunkrunch/surreal-lite-py",
     "podcastfy @ git+https://github.com/varunkrunch/podcastfy",
+    
+    # AI/ML Core
     "pydantic>=2.9.2",
     "langchain>=0.3.3",
     "langchain-community>=0.3.3",
@@ -28,6 +67,8 @@ dependencies = [
     "langchain-anthropic>=0.2.3",
     "langgraph>=0.2.38",
     "langgraph-checkpoint-sqlite>=2.0.0",
+    
+    # AI Providers
     "langchain-ollama>=0.2.0",
     "langchain-google-genai>=2.0.1",
     "langchain-groq>=0.2.1",
@@ -35,11 +76,15 @@ dependencies = [
     "langchain-deepseek>=0.1.3",
     "langchain-google-vertexai>=2.0.10",
     "groq>=0.12.0",
+    
+    # Content Processing
     "content-core>=1.0.2",
     "ai-prompter>=0.3.0",
     "esperanto>=2.0.4",
     "python-magic>=0.4.27",
     "python-magic-bin>=0.4.14; sys_platform == 'win32'",
+    
+    # Utilities
     "requests>=2.31.0",
     "loguru>=0.7.2",
     "humanize>=4.11.0",
@@ -47,6 +92,37 @@ dependencies = [
     "tomli>=2.0.2",
     "httpx[socks]>=0.27.0",
     "tiktoken>=0.8.0"
+]
+
+[project.optional-dependencies]
+# Development dependencies
+dev = [
+    # Testing
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.20.0",
+    "pytest-cov>=3.0.0",
+    "pytest-mock>=3.10.0",
+    "pytest-xdist>=3.0.0",
+    "httpx>=0.23.0",
+    
+    # Code quality
+    "black>=22.3.0",
+    "isort>=5.10.1",
+    "flake8>=4.0.1",
+    "mypy>=0.950",
+    "pre-commit>=2.20.0",
+    
+    # Documentation
+    "mkdocs>=1.3.0",
+    "mkdocs-material>=8.0.0",
+    "mkdocstrings[python]>=0.20.0",
+    "mkdocs-autorefs>=0.4.1",
+    "mkdocs-include-markdown-plugin>=3.4.0",
+    
+    # Development tools
+    "ipython>=8.0.0",
+    "jupyter>=1.0.0",
+    "python-dotenv>=0.21.0"
 ]
 
 [project.optional-dependencies]
