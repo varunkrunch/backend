@@ -52,7 +52,7 @@ The application will be available at http://localhost:8000
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/open-notebook.git
+git clone https://github.com/varunkrunch/backend.git
 cd open-notebook
 
 # Create and activate virtual environment
