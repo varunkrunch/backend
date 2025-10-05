@@ -33,7 +33,7 @@ A comprehensive knowledge management system with AI-powered features for organiz
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/open-notebook.git
+git clone https://github.com/varunkrunch/backend.git
 cd open-notebook
 
 # Copy example environment file
@@ -193,9 +193,6 @@ The application uses the following models for different tasks:
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
